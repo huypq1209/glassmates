@@ -119,13 +119,18 @@ enum WindowArranger {
             let pid = running.processIdentifier
             members.append((pid, AXUIElementCreateApplication(pid), window, item))
         }
+        debugLog("glue \(workspace.name) trigger=\(triggerPID) members=\(members.map { "\($0.item.appName)#\($0.pid)" }) / items=\(workspace.items.map(\.appName))")
         guard !members.isEmpty else { return }
 
         if workspace.layout == .custom, workspace.rearrange || forceArrange {
             let screens = Screens.all()
             for member in members {
                 if let p = member.item.placement, let target = Screens.rect(for: p, in: screens) {
+                    let before = frameOf(member.window)
                     place(member.window, in: target)
+                    debugLog("glue place \(member.item.appName) title=\(stringAttribute(member.window, kAXTitleAttribute) ?? "nil") before=\(String(describing: before)) target=\(target) after=\(String(describing: frameOf(member.window)))")
+                } else {
+                    debugLog("glue place \(member.item.appName): không có vị trí")
                 }
             }
         } else if workspace.rearrange || forceArrange {

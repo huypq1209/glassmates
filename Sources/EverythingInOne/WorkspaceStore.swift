@@ -110,6 +110,8 @@ final class WorkspaceStore: ObservableObject {
             workspaces[i].items[index].placement = placement
         }
         workspaces[i].layout = .custom
+        // Đã đặt vị trí thì phải áp dụng, không thì gắn app chỉ đưa lên mà không về đúng chỗ.
+        workspaces[i].rearrange = true
         persist()
     }
 

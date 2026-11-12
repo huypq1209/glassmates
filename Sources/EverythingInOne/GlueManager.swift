@@ -24,6 +24,7 @@ final class GlueManager {
     }
 
     private func handleActivation(_ app: NSRunningApplication?) {
+        debugLog("activate \(app?.bundleIdentifier ?? "nil") busy=\(busy) cooldown=\(Date() < cooldownUntil)")
         // Bỏ qua các lần kích hoạt do chính mình gây ra (tránh vòng lặp).
         guard !busy, Date() > cooldownUntil, AXIsProcessTrusted(),
               let app, let bundleID = app.bundleIdentifier,
