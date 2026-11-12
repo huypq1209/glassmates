@@ -98,6 +98,59 @@ enum WindowArranger {
         return result
     }
 
+    // MARK: - Gắn app (glue)
+
+    /// Đưa các app trong nhóm lên cùng lúc khi một app trong nhóm được kích hoạt.
+    /// App vừa được kích hoạt (`triggerPID`) lên cuối cùng để giữ focus.
+    @MainActor
+    static func glue(_ workspace: Workspace, triggerPID: pid_t) async {
+        var members: [(pid: pid_t, app: AXUIElement, window: AXUIElement)] = []
+        for item in workspace.items {
+            guard let running = NSRunningApplication.runningApplications(withBundleIdentifier: item.bundleID).first,
+                  let window = mainWindow(pid: running.processIdentifier, preferredTitle: item.title)
+            else { continue }
+            let pid = running.processIdentifier
+            members.append((pid, AXUIElementCreateApplication(pid), window))
+        }
+        guard members.count > 1 else { return }
+
+        if workspace.rearrange {
+            let cells = rects(count: members.count, preset: workspace.layout, in: workArea())
+            for (member, cell) in zip(members, cells) { place(member.window, in: cell) }
+        }
+
+        let others = members.filter { $0.pid != triggerPID }
+        let trigger = members.filter { $0.pid == triggerPID }
+        for member in others + trigger {
+            AXUIElementSetAttributeValue(member.app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+            AXUIElementPerformAction(member.window, kAXRaiseAction as CFString)
+            try? await Task.sleep(nanoseconds: 80_000_000)
+        }
+    }
+
+    /// Cửa sổ chính của app: ưu tiên cửa sổ có tiêu đề khớp, rồi main window, rồi cửa sổ đầu tiên.
+    private static func mainWindow(pid: pid_t, preferredTitle: String) -> AXUIElement? {
+        let app = AXUIElementCreateApplication(pid)
+        var value: CFTypeRef?
+        let windows: [AXUIElement] =
+            AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success
+            ? (value as? [AXUIElement] ?? []) : []
+
+        if !preferredTitle.isEmpty, let match = windows.first(where: {
+            guard let t = stringAttribute($0, kAXTitleAttribute) else { return false }
+            return t == preferredTitle || t.contains(preferredTitle) || preferredTitle.contains(t)
+        }) {
+            return match
+        }
+
+        var main: CFTypeRef?
+        if AXUIElementCopyAttributeValue(app, kAXMainWindowAttribute as CFString, &main) == .success,
+           let main, CFGetTypeID(main) == AXUIElementGetTypeID() {
+            return (main as! AXUIElement)
+        }
+        return windows.first
+    }
+
     // MARK: - Accessibility helpers
 
     private static func axWindow(pid: pid_t, title: String?, frame: CGRect) -> AXUIElement? {

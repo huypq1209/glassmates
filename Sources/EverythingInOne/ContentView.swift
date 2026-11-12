@@ -3,7 +3,7 @@ import ScreenCaptureKit
 
 struct ContentView: View {
     @StateObject private var store = WindowStore()
-    @StateObject private var workspaces = WorkspaceStore()
+    @EnvironmentObject private var workspaces: WorkspaceStore
     @State private var layout: LayoutPreset = .sideBySide
     @State private var showSave = false
     @State private var saveName = ""
@@ -24,6 +24,13 @@ struct ContentView: View {
 
     private var sidebar: some View {
         List {
+            if !workspaces.workspaces.isEmpty {
+                Section("Workspace") {
+                    ForEach(workspaces.workspaces) { ws in
+                        WorkspaceRow(workspace: ws, store: store)
+                    }
+                }
+            }
             ForEach(grouped, id: \.name) { group in
                 Section(group.name) {
                     ForEach(group.windows, id: \.windowID) { window in
@@ -141,7 +148,7 @@ struct ContentView: View {
             }
             Button("Huỷ", role: .cancel) {}
         } message: {
-            Text("Lưu các cửa sổ đang chọn và bố cục \(layout.title).")
+            Text("Lưu các cửa sổ đang chọn và bố cục \(layout.title). Workspace mới được bật Gắn sẵn: kích hoạt 1 app thì các app còn lại cùng nổi lên.")
         }
     }
 
@@ -289,6 +296,49 @@ struct TileView: View {
             } catch {
                 failure = error.localizedDescription
             }
+        }
+    }
+}
+
+/// Một workspace trong thanh bên: bật/tắt gắn, chọn bố cục, xếp lại mỗi lần.
+struct WorkspaceRow: View {
+    let workspace: Workspace
+    @ObservedObject var store: WindowStore
+    @EnvironmentObject private var workspaces: WorkspaceStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(workspace.name).font(.headline)
+                Spacer()
+                Toggle("Gắn", isOn: Binding(
+                    get: { workspace.glued },
+                    set: { workspaces.setGlued(workspace.id, $0) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+            }
+            Text(workspace.items.map(\.appName).joined(separator: " + "))
+                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Picker("Bố cục", selection: Binding(
+                get: { workspace.layout },
+                set: { workspaces.setLayout(workspace.id, $0) }
+            )) {
+                ForEach(LayoutPreset.allCases) { Text($0.title).tag($0) }
+            }
+            .labelsHidden()
+            .controlSize(.small)
+            Toggle("Xếp lại bố cục mỗi lần", isOn: Binding(
+                get: { workspace.rearrange },
+                set: { workspaces.setRearrange(workspace.id, $0) }
+            ))
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
+        }
+        .padding(.vertical, 4)
+        .contextMenu {
+            Button("Mở và xếp ngay") { Task { await workspaces.open(workspace, store: store) } }
+            Button("Xoá", role: .destructive) { workspaces.delete(workspace) }
         }
     }
 }

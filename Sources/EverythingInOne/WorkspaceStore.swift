@@ -13,6 +13,27 @@ struct Workspace: Codable, Identifiable, Equatable {
     var name: String
     var layout: LayoutPreset
     var items: [Item]
+    /// Gắn các app: kích hoạt 1 app thì các app còn lại cùng nổi lên.
+    var glued = true
+    /// Mỗi lần nhóm nổi lên thì xếp lại theo bố cục.
+    var rearrange = true
+
+    init(name: String, layout: LayoutPreset, items: [Item]) {
+        self.name = name
+        self.layout = layout
+        self.items = items
+    }
+
+    // Đọc được cả dữ liệu cũ chưa có glued / rearrange.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try c.decode(String.self, forKey: .name)
+        layout = try c.decode(LayoutPreset.self, forKey: .layout)
+        items = try c.decode([Item].self, forKey: .items)
+        glued = try c.decodeIfPresent(Bool.self, forKey: .glued) ?? true
+        rearrange = try c.decodeIfPresent(Bool.self, forKey: .rearrange) ?? true
+    }
 }
 
 /// Lưu / mở lại workspace (nhóm app + bố cục).
@@ -51,6 +72,24 @@ final class WorkspaceStore: ObservableObject {
         } else {
             workspaces.append(Workspace(name: name, layout: layout, items: items))
         }
+        persist()
+    }
+
+    func setGlued(_ id: UUID, _ value: Bool) {
+        guard let i = workspaces.firstIndex(where: { $0.id == id }) else { return }
+        workspaces[i].glued = value
+        persist()
+    }
+
+    func setRearrange(_ id: UUID, _ value: Bool) {
+        guard let i = workspaces.firstIndex(where: { $0.id == id }) else { return }
+        workspaces[i].rearrange = value
+        persist()
+    }
+
+    func setLayout(_ id: UUID, _ value: LayoutPreset) {
+        guard let i = workspaces.firstIndex(where: { $0.id == id }) else { return }
+        workspaces[i].layout = value
         persist()
     }
 
