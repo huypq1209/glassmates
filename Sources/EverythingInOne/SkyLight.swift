@@ -27,6 +27,39 @@ enum SkyLight {
         return unsafeBitCast(s, to: EventPostToPid.self)
     }()
 
+    private typealias SetFrontProcessWithOptions = @convention(c) (UnsafeRawPointer, UInt32, UInt32) -> Int32
+    private typealias AXGetWindow = @convention(c) (UnsafeRawPointer, UnsafeMutablePointer<UInt32>) -> Int32
+
+    private static let setFrontProcessWithOptions: SetFrontProcessWithOptions? = {
+        guard let s = dlsym(handle, "_SLPSSetFrontProcessWithOptions") else { return nil }
+        return unsafeBitCast(s, to: SetFrontProcessWithOptions.self)
+    }()
+
+    private static let axGetWindow: AXGetWindow? = {
+        guard let s = dlsym(rtldDefault, "_AXUIElementGetWindow") else { return nil }
+        return unsafeBitCast(s, to: AXGetWindow.self)
+    }()
+
+    /// CGWindowID của một cửa sổ Accessibility.
+    static func windowID(of element: AXUIElement) -> CGWindowID? {
+        guard let axGetWindow else { return nil }
+        var id: UInt32 = 0
+        let err = axGetWindow(Unmanaged.passUnretained(element).toOpaque(), &id)
+        return err == 0 && id != 0 ? id : nil
+    }
+
+    /// Đưa đúng MỘT cửa sổ lên trước và cho app của nó focus, không kéo các cửa sổ khác của app lên theo.
+    @discardableResult
+    static func focusSingleWindow(pid: pid_t, windowID: CGWindowID) -> Bool {
+        guard let setFrontProcessWithOptions, let getProcessForPID else { return false }
+        var psn = [UInt32](repeating: 0, count: 2)
+        guard psn.withUnsafeMutableBytes({ getProcessForPID(pid, $0.baseAddress!) }) == 0 else { return false }
+        let userGenerated: UInt32 = 0x200
+        let status = psn.withUnsafeBytes { setFrontProcessWithOptions($0.baseAddress!, windowID, userGenerated) }
+        focusWithoutRaise(pid: pid, windowID: windowID)   // make key window
+        return status == 0
+    }
+
     static var isAvailable: Bool {
         postEventRecordTo != nil && getProcessForPID != nil
     }

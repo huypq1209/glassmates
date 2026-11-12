@@ -148,11 +148,33 @@ enum WindowArranger {
         debugLog("glue raise: \(hidden.map(\.item.appName)) / bỏ qua \(others.count - hidden.count) app đã hiện")
         guard !hidden.isEmpty else { return }
 
-        let trigger = members.filter { $0.pid == triggerPID }
-        for member in hidden + trigger {
+        // Cách 1: chỉ raise cửa sổ, KHÔNG chuyển focus. App vừa bấm giữ nguyên focus,
+        // nên không bị kích hoạt lại (kích hoạt lại sẽ kéo các cửa sổ khác của nó lên che nhóm).
+        for member in hidden {
+            AXUIElementPerformAction(member.window, kAXRaiseAction as CFString)
+        }
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        let stillHidden = hidden.filter { isObstructed($0.pid, $0.window) }
+        debugLog("glue raise (không đổi focus): còn bị che \(stillHidden.map(\.item.appName))")
+        guard !stillHidden.isEmpty else { return }
+
+        // Cách 2 (dự phòng): chuyển focus lần lượt, cuối cùng trả về đúng cửa sổ của app vừa bấm.
+        for member in stillHidden {
             AXUIElementSetAttributeValue(member.app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
             AXUIElementPerformAction(member.window, kAXRaiseAction as CFString)
             try? await Task.sleep(nanoseconds: 60_000_000)
+        }
+        for member in members where member.pid == triggerPID {
+            // Trả focus về đúng cửa sổ trong nhóm của app vừa bấm, không kéo các cửa sổ khác của nó lên.
+            AXUIElementSetAttributeValue(member.window, kAXMainAttribute as CFString, kCFBooleanTrue)
+            if let wid = SkyLight.windowID(of: member.window),
+               SkyLight.focusSingleWindow(pid: member.pid, windowID: wid) {
+                debugLog("glue refocus \(member.item.appName) bằng SkyLight (wid=\(wid))")
+            } else {
+                AXUIElementSetAttributeValue(member.app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+                AXUIElementPerformAction(member.window, kAXRaiseAction as CFString)
+                debugLog("glue refocus \(member.item.appName) bằng AXFrontmost (SkyLight không dùng được)")
+            }
         }
     }
 
