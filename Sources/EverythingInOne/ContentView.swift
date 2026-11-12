@@ -380,6 +380,13 @@ struct WorkspaceRow: View {
             ))
             .toggleStyle(.checkbox)
             .controlSize(.small)
+            Toggle("Thu nhỏ cửa sổ khác của các app này nếu che nhóm", isOn: Binding(
+                get: { workspace.minimizeOthers },
+                set: { workspaces.setMinimizeOthers(workspace.id, $0) }
+            ))
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
+            .help("Vd. Chrome có nhiều cửa sổ: bấm Chrome trên Dock sẽ đưa mọi cửa sổ lên che nhóm. Bật để thu nhỏ các cửa sổ thừa đó vào Dock.")
             Button("Tuỳ chỉnh vị trí…") { showEditor = true }
                 .controlSize(.small)
         }

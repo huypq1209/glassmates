@@ -141,6 +141,10 @@ enum WindowArranger {
             for (member, cell) in zip(members, cells) { place(member.window, in: cell) }
         }
 
+        if workspace.minimizeOthers {
+            minimizeOverlappingExtras(members.map { ($0.pid, $0.window, $0.item.appName) })
+        }
+
         // Chỉ đưa lên những app đang bị cửa sổ khác che. Nếu cả nhóm đã hiện rõ thì không làm gì,
         // tránh việc focus nhảy qua lại giữa các app (gây giật màn hình).
         let others = members.filter { $0.pid != triggerPID }
@@ -176,6 +180,40 @@ enum WindowArranger {
                 debugLog("glue refocus \(member.item.appName) bằng AXFrontmost (SkyLight không dùng được)")
             }
         }
+    }
+
+    /// Thu nhỏ các cửa sổ của app trong nhóm mà KHÔNG thuộc nhóm, nếu chúng đè lên một cửa sổ của nhóm.
+    /// Nhờ vậy lần sau bấm app trên Dock, macOS không đưa chúng lên che nhóm nữa.
+    private static func minimizeOverlappingExtras(_ members: [(pid: pid_t, window: AXUIElement, name: String)]) {
+        let groupFrames = members.compactMap { frameOf($0.window) }
+        var minimized: [String] = []
+        for pid in Set(members.map(\.pid)) {
+            let app = AXUIElementCreateApplication(pid)
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
+                  let windows = value as? [AXUIElement] else { continue }
+            for w in windows {
+                if members.contains(where: { CFEqual($0.window, w) }) { continue }
+                guard stringAttribute(w, kAXSubroleAttribute) == (kAXStandardWindowSubrole as String),
+                      !boolAttribute(w, kAXMinimizedAttribute),
+                      let frame = frameOf(w) else { continue }
+                let covers = groupFrames.contains { g in
+                    let overlap = g.intersection(frame)
+                    return !overlap.isNull && overlap.width * overlap.height > 0.15 * g.width * g.height
+                }
+                if covers {
+                    AXUIElementSetAttributeValue(w, kAXMinimizedAttribute as CFString, kCFBooleanTrue)
+                    minimized.append("\(members.first { $0.pid == pid }?.name ?? "?"): \(stringAttribute(w, kAXTitleAttribute) ?? "")")
+                }
+            }
+        }
+        if !minimized.isEmpty { debugLog("glue minimize: \(minimized)") }
+    }
+
+    private static func boolAttribute(_ el: AXUIElement, _ attr: String) -> Bool {
+        var v: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success else { return false }
+        return (v as? Bool) ?? false
     }
 
     /// Cửa sổ có đang bị một cửa sổ khác (thuộc app khác) nằm trên và đè lên không.

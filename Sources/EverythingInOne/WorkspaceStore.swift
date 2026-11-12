@@ -19,6 +19,8 @@ struct Workspace: Codable, Identifiable, Equatable {
     var glued = true
     /// Mỗi lần nhóm nổi lên thì xếp lại theo bố cục.
     var rearrange = true
+    /// Thu nhỏ các cửa sổ khác (không thuộc nhóm) của các app trong nhóm nếu chúng đè lên nhóm.
+    var minimizeOthers = false
 
     init(name: String, layout: LayoutPreset, items: [Item]) {
         self.name = name
@@ -35,6 +37,7 @@ struct Workspace: Codable, Identifiable, Equatable {
         items = try c.decode([Item].self, forKey: .items)
         glued = try c.decodeIfPresent(Bool.self, forKey: .glued) ?? true
         rearrange = try c.decodeIfPresent(Bool.self, forKey: .rearrange) ?? true
+        minimizeOthers = try c.decodeIfPresent(Bool.self, forKey: .minimizeOthers) ?? false
     }
 }
 
@@ -112,6 +115,12 @@ final class WorkspaceStore: ObservableObject {
         workspaces[i].layout = .custom
         // Đã đặt vị trí thì phải áp dụng, không thì gắn app chỉ đưa lên mà không về đúng chỗ.
         workspaces[i].rearrange = true
+        persist()
+    }
+
+    func setMinimizeOthers(_ id: UUID, _ value: Bool) {
+        guard let i = workspaces.firstIndex(where: { $0.id == id }) else { return }
+        workspaces[i].minimizeOthers = value
         persist()
     }
 

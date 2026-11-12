@@ -48,6 +48,8 @@
 "Làm mới danh sách cửa sổ" = "Refresh Window List";
 "Thêm app" = "Add App";
 "Xếp lại bố cục mỗi lần" = "Re-arrange every time";
+"Thu nhỏ cửa sổ khác của các app này nếu che nhóm" = "Minimize these apps' other windows if they cover the group";
+"Vd. Chrome có nhiều cửa sổ: bấm Chrome trên Dock sẽ đưa mọi cửa sổ lên che nhóm. Bật để thu nhỏ các cửa sổ thừa đó vào Dock." = "E.g. Chrome has several windows: clicking Chrome in the Dock brings all of them forward over the group. Turn on to minimize those extra windows to the Dock.";
 "Tuỳ chỉnh vị trí…" = "Customize Positions…";
 "Mở và xếp ngay" = "Open and Arrange Now";
 "Xoá" = "Delete";
