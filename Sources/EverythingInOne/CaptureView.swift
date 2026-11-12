@@ -91,6 +91,14 @@ final class InputView: NSView {
 
     private var targetPID: pid_t? { capture.window.owningApplication?.processID }
 
+    /// Thử nghiệm SkyLight: báo cho hệ thống biết cửa sổ gốc đang active (không raise) để nó chịu nhận chuột/phím.
+    private func prepareTarget() {
+        guard UserDefaults.standard.object(forKey: "skylightInput") as? Bool ?? true,
+              let pid = targetPID else { return }
+        let ok = SkyLight.focusWithoutRaise(pid: pid, windowID: capture.window.windowID)
+        debugLog("prepareTarget pid=\(pid) ok=\(ok) [\(SkyLight.summary)]")
+    }
+
     // MARK: Chuột
 
     private func sendMouse(_ type: CGEventType, button: CGMouseButton, event: NSEvent) {
@@ -100,18 +108,20 @@ final class InputView: NSView {
         cg.setIntegerValueField(.mouseEventClickState, value: Int64(event.clickCount))
         cg.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(capture.window.windowID))
         cg.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(capture.window.windowID))
-        cg.postToPid(pid)
+        SkyLight.post(cg, pid: pid)
     }
 
     override func mouseDown(with event: NSEvent) {
         debugLog("mouseDown AX=\(AXIsProcessTrusted()) pid=\(targetPID ?? -1) point=\(String(describing: globalPoint(for: event))) frame=\(liveWindowFrame()) surface=\(surfaceSize) bounds=\(bounds)")
         window?.makeFirstResponder(self)
+        prepareTarget()
         sendMouse(.leftMouseDown, button: .left, event: event)
     }
     override func mouseUp(with event: NSEvent) { sendMouse(.leftMouseUp, button: .left, event: event) }
     override func mouseDragged(with event: NSEvent) { sendMouse(.leftMouseDragged, button: .left, event: event) }
     override func rightMouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        prepareTarget()
         sendMouse(.rightMouseDown, button: .right, event: event)
     }
     override func rightMouseUp(with event: NSEvent) { sendMouse(.rightMouseUp, button: .right, event: event) }
@@ -130,7 +140,7 @@ final class InputView: NSView {
               )
         else { return }
         cg.location = point
-        cg.postToPid(pid)
+        SkyLight.post(cg, pid: pid)
     }
 
     // MARK: Bàn phím
@@ -144,7 +154,7 @@ final class InputView: NSView {
             let units = Array(chars.utf16)
             cg.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
         }
-        cg.postToPid(pid)
+        SkyLight.post(cg, pid: pid)
     }
 
     override func keyDown(with event: NSEvent) { sendKey(event, down: true) }

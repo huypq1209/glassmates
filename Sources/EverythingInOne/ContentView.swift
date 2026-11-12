@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var showSave = false
     @State private var saveName = ""
     @State private var showPreview = false
+    @AppStorage("skylightInput") private var skylightInput = true
 
     var body: some View {
         NavigationSplitView {
@@ -116,6 +117,10 @@ struct ContentView: View {
             Toggle("Xem trước", isOn: $showPreview)
                 .toggleStyle(.checkbox)
                 .help("Hiện ảnh chụp trực tiếp các cửa sổ đã chọn (chỉ để xem, không thao tác được)")
+
+            Toggle("Thao tác trong ô (thử nghiệm)", isOn: $skylightInput)
+                .toggleStyle(.checkbox)
+                .help("Gửi chuột/phím vào app gốc qua SkyLight khi xem trước. Cần bật \"Xem trước\".")
 
             Spacer()
 
