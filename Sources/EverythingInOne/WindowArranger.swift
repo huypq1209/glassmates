@@ -13,10 +13,10 @@ enum LayoutPreset: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .sideBySide: return "Cạnh nhau"
-        case .mainLeft: return "Chính 2/3 + phụ"
-        case .grid: return "Lưới"
-        case .custom: return "Tuỳ chỉnh"
+        case .sideBySide: return String(localized: "Cạnh nhau")
+        case .mainLeft: return String(localized: "Chính 2/3 + phụ")
+        case .grid: return String(localized: "Lưới")
+        case .custom: return String(localized: "Tuỳ chỉnh")
         }
     }
 }

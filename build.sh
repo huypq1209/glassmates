@@ -16,6 +16,7 @@ cp "$BIN" "$APP/Contents/MacOS/EverythingInOne"
 cp Info.plist "$APP/Contents/Info.plist"
 mkdir -p "$APP/Contents/Resources"
 cp Design/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp -R Resources/*.lproj "$APP/Contents/Resources/"   # ngôn ngữ: en (mặc định), vi
 
 codesign --force --sign "$IDENTITY" "$APP"
 echo "Đã build: $(pwd)/$APP"

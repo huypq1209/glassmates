@@ -1,0 +1,87 @@
+/* English. Khoá = câu tiếng Việt trong code. Câu có số ít/nhiều nằm trong Localizable.stringsdict. */
+
+/* Thanh menu & lệnh */
+"Đóng cửa sổ (vẫn chạy trên thanh menu)" = "Close Window (Keeps Running in Menu Bar)";
+"Chưa có workspace" = "No workspaces yet";
+"Gắn: %@" = "Glue: %@";
+"Mở cùng máy khi đăng nhập" = "Open at Login";
+"Cần cho phép trong Login Items…" = "Allow in Login Items…";
+"Mở Glassmates" = "Open Glassmates";
+"Thoát hẳn" = "Quit Glassmates";
+
+/* Cửa sổ chính */
+"Làm mới" = "Refresh";
+"Khác" = "Other";
+"Bố cục" = "Layout";
+"Xếp cửa sổ thật" = "Arrange Windows";
+"Xếp các cửa sổ đã chọn cạnh nhau và đưa lên trước" = "Arrange the selected windows side by side and bring them to the front";
+"Lưu workspace…" = "Save Workspace…";
+"Xoá: %@" = "Delete: %@";
+"Xem trước" = "Preview";
+"Hiện ảnh chụp trực tiếp các cửa sổ đã chọn (chỉ để xem, không thao tác được)" = "Show a live capture of the selected windows (view only, not interactive)";
+"Thao tác trong ô (thử nghiệm)" = "Interact in Tiles (Experimental)";
+"Gửi chuột/phím vào app gốc qua SkyLight khi xem trước. Cần bật \"Xem trước\"." = "Send mouse and keyboard input to the source app via SkyLight while previewing. Requires \"Preview\".";
+"Lưu workspace" = "Save Workspace";
+"Tên workspace" = "Workspace name";
+"Lưu" = "Save";
+"Huỷ" = "Cancel";
+"Đã lưu workspace %@." = "Saved workspace %@.";
+"Lưu các cửa sổ đang chọn và bố cục %@. Workspace mới được bật Gắn sẵn: kích hoạt 1 app thì các app còn lại cùng nổi lên." = "Save the selected windows with the %@ layout. New workspaces have Glue turned on: activating one app brings the others to the front.";
+"Chưa chọn cửa sổ nào" = "No Windows Selected";
+"Chọn cửa sổ ở thanh bên trái để hiển thị tại đây." = "Select windows in the sidebar to show them here.";
+"Chưa có quyền Accessibility nên không thao tác (chuột/phím) được trong ô." = "Accessibility permission isn't granted, so mouse and keyboard input in tiles won't work.";
+"Cấp quyền" = "Grant Access";
+"Mở System Settings" = "Open System Settings";
+"Đã chọn — thứ tự quyết định vị trí trong bố cục" = "Selected — order determines position in the layout";
+"Nhấn \"Xếp cửa sổ thật\" để xếp các cửa sổ này cạnh nhau, rồi thao tác trực tiếp trên chúng." = "Click \"Arrange Windows\" to place these windows side by side, then use them directly.";
+"Cần quyền Screen Recording" = "Screen Recording Permission Required";
+"Bật quyền cho Glassmates trong System Settings → Privacy & Security → Screen & System Audio Recording, rồi mở lại app." = "Allow Glassmates in System Settings → Privacy & Security → Screen & System Audio Recording, then reopen the app.";
+"Yêu cầu quyền" = "Request Access";
+"Đưa app gốc lên trước" = "Bring source app to front";
+"Bỏ ô này" = "Remove this tile";
+"Luồng chụp đã dừng" = "Capture stream stopped";
+
+/* Workspace ở thanh bên */
+"Gắn" = "Glue";
+"Bỏ %@ khỏi workspace" = "Remove %@ from workspace";
+"Không có cửa sổ nào khác đang mở" = "No other open windows";
+"Làm mới danh sách cửa sổ" = "Refresh Window List";
+"Thêm app" = "Add App";
+"Xếp lại bố cục mỗi lần" = "Re-arrange every time";
+"Tuỳ chỉnh vị trí…" = "Customize Positions…";
+"Mở và xếp ngay" = "Open and Arrange Now";
+"Xoá" = "Delete";
+
+/* Bố cục */
+"Cạnh nhau" = "Side by Side";
+"Chính 2/3 + phụ" = "Main 2/3 + Side";
+"Lưới" = "Grid";
+"Tuỳ chỉnh" = "Custom";
+
+/* Trình chỉnh vị trí */
+"Tuỳ chỉnh vị trí — %@" = "Customize Positions — %@";
+"Kéo khung để di chuyển (kéo sang màn hình khác được). Kéo ô vuông ở góc dưới phải để đổi kích thước." = "Drag a frame to move it (including to another display). Drag the square in the bottom-right corner to resize.";
+"Lấy vị trí cửa sổ hiện tại" = "Use Current Window Positions";
+"Xem thử" = "Try It";
+"Màn hình" = "Display";
+"Vị trí nhanh" = "Quick Position";
+"Toàn màn hình" = "Full Screen";
+"Nửa trái" = "Left Half";
+"Nửa phải" = "Right Half";
+"2/3 trái" = "Left Two-Thirds";
+"1/3 phải" = "Right Third";
+"1/3 trái" = "Left Third";
+"2/3 phải" = "Right Two-Thirds";
+"Nửa trên" = "Top Half";
+"Nửa dưới" = "Bottom Half";
+"%lld×%lld tại (%lld, %lld)" = "%1$lld×%2$lld at (%3$lld, %4$lld)";
+"Đã lưu vị trí tuỳ chỉnh cho %@." = "Saved custom positions for %@.";
+
+/* Trạng thái */
+"Không lưu được: %@" = "Couldn't save: %@";
+"Đã thêm %@ vào %@." = "Added %1$@ to %2$@.";
+"Đã bỏ %@ khỏi %@." = "Removed %1$@ from %2$@.";
+"Cần quyền Accessibility để xếp cửa sổ." = "Accessibility permission is required to arrange windows.";
+"Đang mở %@…" = "Opening %@…";
+"Đã xếp %@." = "Arranged %@.";
+"Đã xếp %@. Không mở được: %@." = "Arranged %1$@. Couldn't open: %2$@.";

@@ -173,7 +173,7 @@ struct LayoutEditor: View {
     }
 
     private func sizeText(_ r: CGRect) -> String {
-        "\(Int(r.width))×\(Int(r.height)) tại (\(Int(r.minX)), \(Int(r.minY)))"
+        String(localized: "\(Int(r.width))×\(Int(r.height)) tại (\(Int(r.minX)), \(Int(r.minY)))")
     }
 
     private func quick(_ index: Int, _ fx: Double, _ fy: Double, _ fw: Double, _ fh: Double) {
@@ -231,7 +231,7 @@ struct LayoutEditor: View {
     private func save() {
         debugLog("LayoutEditor.save \(workspace.name): \(placements)")
         workspaces.setPlacements(workspace.id, placements)
-        workspaces.status = "Đã lưu vị trí tuỳ chỉnh cho \(workspace.name)."
+        workspaces.status = String(localized: "Đã lưu vị trí tuỳ chỉnh cho \(workspace.name).")
         dismiss()
     }
 }

@@ -66,7 +66,7 @@ final class WorkspaceStore: ObservableObject {
             debugLog("persist: \(summary.joined(separator: "; "))")
         } catch {
             debugLog("persist LỖI: \(error)")
-            status = "Không lưu được: \(error.localizedDescription)"
+            status = String(localized: "Không lưu được: \(error.localizedDescription)")
         }
     }
 
@@ -132,7 +132,7 @@ final class WorkspaceStore: ObservableObject {
         }
         workspaces[i].items.append(item)
         persist()
-        status = "Đã thêm \(item.appName) vào \(workspaces[i].name)."
+        status = String(localized: "Đã thêm \(item.appName) vào \(workspaces[i].name).")
     }
 
     func removeItem(_ id: UUID, at index: Int) {
@@ -140,7 +140,7 @@ final class WorkspaceStore: ObservableObject {
               workspaces[i].items.indices.contains(index) else { return }
         let removed = workspaces[i].items.remove(at: index)
         persist()
-        status = "Đã bỏ \(removed.appName) khỏi \(workspaces[i].name)."
+        status = String(localized: "Đã bỏ \(removed.appName) khỏi \(workspaces[i].name).")
     }
 
     func delete(_ workspace: Workspace) {
@@ -153,10 +153,10 @@ final class WorkspaceStore: ObservableObject {
     /// Mở app còn thiếu, tìm cửa sổ tương ứng, rồi xếp và đưa lên trước.
     func open(_ workspace: Workspace, store: WindowStore) async {
         guard AXIsProcessTrusted() else {
-            status = "Cần quyền Accessibility để xếp cửa sổ."
+            status = String(localized: "Cần quyền Accessibility để xếp cửa sổ.")
             return
         }
-        status = "Đang mở \(workspace.name)…"
+        status = String(localized: "Đang mở \(workspace.name)…")
         await store.refresh()
 
         var found: [SCWindow] = []
@@ -182,16 +182,16 @@ final class WorkspaceStore: ObservableObject {
                 .first?.processIdentifier ?? 0
             await WindowArranger.glue(workspace, triggerPID: firstPID, forceArrange: true)
             status = missing.isEmpty
-                ? "Đã xếp \(workspace.name)."
-                : "Đã xếp \(workspace.name). Không mở được: \(missing.joined(separator: ", "))."
+                ? String(localized: "Đã xếp \(workspace.name).")
+                : String(localized: "Đã xếp \(workspace.name). Không mở được: \(missing.joined(separator: ", ")).")
             return
         }
 
         let result = await WindowArranger.arrange(found, preset: workspace.layout)
         let notArranged = missing + result.missed
         status = notArranged.isEmpty
-            ? "Đã xếp \(result.arranged) cửa sổ."
-            : "Đã xếp \(result.arranged) cửa sổ. Không xếp được: \(notArranged.joined(separator: ", "))."
+            ? String(localized: "Đã xếp \(result.arranged) cửa sổ.")
+            : String(localized: "Đã xếp \(result.arranged) cửa sổ. Không xếp được: \(notArranged.joined(separator: ", ")).")
     }
 
     private func match(_ item: Workspace.Item, in windows: [SCWindow]) -> SCWindow? {

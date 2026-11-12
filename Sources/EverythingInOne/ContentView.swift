@@ -64,7 +64,7 @@ struct ContentView: View {
     }
 
     private var grouped: [(name: String, windows: [SCWindow])] {
-        Dictionary(grouping: store.windows) { $0.owningApplication?.applicationName ?? "Khác" }
+        Dictionary(grouping: store.windows) { $0.owningApplication?.applicationName ?? String(localized: "Khác") }
             .map { (name: $0.key, windows: $0.value) }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
@@ -84,8 +84,8 @@ struct ContentView: View {
                 Task {
                     let result = await WindowArranger.arrange(windows, preset: layout)
                     workspaces.status = result.missed.isEmpty
-                        ? "Đã xếp \(result.arranged) cửa sổ."
-                        : "Đã xếp \(result.arranged). Không xếp được: \(result.missed.joined(separator: ", "))."
+                        ? String(localized: "Đã xếp \(result.arranged) cửa sổ.")
+                        : String(localized: "Đã xếp \(result.arranged) cửa sổ. Không xếp được: \(result.missed.joined(separator: ", ")).")
                 }
             } label: {
                 Label("Xếp cửa sổ thật", systemImage: "rectangle.3.group")
@@ -145,7 +145,7 @@ struct ContentView: View {
                 let name = saveName.trimmingCharacters(in: .whitespaces)
                 guard !name.isEmpty else { return }
                 workspaces.save(name: name, layout: layout, windows: store.tiles.map(\.window))
-                workspaces.status = "Đã lưu workspace \(name)."
+                workspaces.status = String(localized: "Đã lưu workspace \(name).")
             }
             Button("Huỷ", role: .cancel) {}
         } message: {
@@ -290,7 +290,7 @@ struct TileView: View {
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary).allowsHitTesting(false))
         .task {
             tile.capture.onStop = { error in
-                failure = error?.localizedDescription ?? "Luồng chụp đã dừng"
+                failure = error?.localizedDescription ?? String(localized: "Luồng chụp đã dừng")
             }
             do {
                 try await tile.capture.start()
