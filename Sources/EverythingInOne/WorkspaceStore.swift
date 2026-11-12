@@ -87,7 +87,7 @@ final class WorkspaceStore: ObservableObject {
             if let window { found.append(window) } else { missing.append(item.appName) }
         }
 
-        let result = WindowArranger.arrange(found, preset: workspace.layout)
+        let result = await WindowArranger.arrange(found, preset: workspace.layout)
         let notArranged = missing + result.missed
         status = notArranged.isEmpty
             ? "Đã xếp \(result.arranged) cửa sổ."

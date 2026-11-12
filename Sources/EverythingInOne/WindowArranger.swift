@@ -68,11 +68,12 @@ enum WindowArranger {
     }
 
     /// Xếp các cửa sổ theo bố cục và đưa tất cả lên trước.
-    static func arrange(_ windows: [SCWindow], preset: LayoutPreset) -> Result {
+    @MainActor
+    static func arrange(_ windows: [SCWindow], preset: LayoutPreset) async -> Result {
         var result = Result()
         let cells = rects(count: windows.count, preset: preset, in: workArea())
 
-        var raised: [(app: AXUIElement, window: AXUIElement)] = []
+        var raised: [(pid: pid_t, app: AXUIElement, window: AXUIElement)] = []
         for (window, cell) in zip(windows, cells) {
             let name = window.owningApplication?.applicationName ?? window.title ?? "?"
             guard let pid = window.owningApplication?.processID,
@@ -81,13 +82,18 @@ enum WindowArranger {
                 continue
             }
             place(ax, in: cell)
-            raised.append((AXUIElementCreateApplication(pid), ax))
+            raised.append((pid, AXUIElementCreateApplication(pid), ax))
             result.arranged += 1
         }
 
-        for item in raised {
-            AXUIElementSetAttributeValue(item.app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
-            AXUIElementPerformAction(item.window, kAXRaiseAction as CFString)
+        // Đưa lần lượt từng app lên trước (có nhịp chờ), làm 2 lượt; app của cửa sổ đầu tiên lên cuối cùng để được focus.
+        for _ in 0..<2 {
+            for item in raised.reversed() {
+                NSRunningApplication(processIdentifier: item.pid)?.activate(options: [.activateAllWindows])
+                AXUIElementSetAttributeValue(item.app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+                AXUIElementPerformAction(item.window, kAXRaiseAction as CFString)
+                try? await Task.sleep(nanoseconds: 150_000_000)
+            }
         }
         return result
     }

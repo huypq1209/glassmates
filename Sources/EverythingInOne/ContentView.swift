@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var layout: LayoutPreset = .sideBySide
     @State private var showSave = false
     @State private var saveName = ""
+    @State private var showPreview = false
 
     var body: some View {
         NavigationSplitView {
@@ -71,10 +72,12 @@ struct ContentView: View {
 
             Button {
                 let windows = store.tiles.map(\.window)
-                let result = WindowArranger.arrange(windows, preset: layout)
-                workspaces.status = result.missed.isEmpty
-                    ? "Đã xếp \(result.arranged) cửa sổ."
-                    : "Đã xếp \(result.arranged). Không xếp được: \(result.missed.joined(separator: ", "))."
+                Task {
+                    let result = await WindowArranger.arrange(windows, preset: layout)
+                    workspaces.status = result.missed.isEmpty
+                        ? "Đã xếp \(result.arranged) cửa sổ."
+                        : "Đã xếp \(result.arranged). Không xếp được: \(result.missed.joined(separator: ", "))."
+                }
             } label: {
                 Label("Xếp cửa sổ thật", systemImage: "rectangle.3.group")
             }
@@ -109,6 +112,10 @@ struct ContentView: View {
                 Label("Workspace", systemImage: "square.stack.3d.up")
             }
             .fixedSize()
+
+            Toggle("Xem trước", isOn: $showPreview)
+                .toggleStyle(.checkbox)
+                .help("Hiện ảnh chụp trực tiếp các cửa sổ đã chọn (chỉ để xem, không thao tác được)")
 
             Spacer()
 
@@ -148,7 +155,7 @@ struct ContentView: View {
         } else {
             VStack(spacing: 0) {
                 if !store.hasAccessibility { accessibilityBanner }
-                grid
+                if showPreview { grid } else { selectionList }
             }
         }
     }
@@ -166,6 +173,30 @@ struct ContentView: View {
         }
         .padding(8)
         .background(.yellow.opacity(0.15))
+    }
+
+    /// Danh sách cửa sổ đã chọn theo thứ tự (cửa sổ đầu là cửa sổ chính của bố cục).
+    private var selectionList: some View {
+        List {
+            Section("Đã chọn — thứ tự quyết định vị trí trong bố cục") {
+                ForEach(Array(store.tiles.enumerated()), id: \.element.id) { index, tile in
+                    HStack {
+                        Text("\(index + 1)").font(.headline).frame(width: 24)
+                        VStack(alignment: .leading) {
+                            Text(tile.window.owningApplication?.applicationName ?? "")
+                            Text(tile.window.title ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                        Button { store.remove(id: tile.id) } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.plain)
+                    }
+                }
+            }
+            Section {
+                Text("Nhấn \"Xếp cửa sổ thật\" để xếp các cửa sổ này cạnh nhau, rồi thao tác trực tiếp trên chúng.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+        }
     }
 
     /// Chia đều không gian cho các ô, ô nào cũng lấp đầy phần của mình (nội dung giữ đúng tỉ lệ app gốc).
