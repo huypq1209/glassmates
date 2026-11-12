@@ -14,6 +14,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$BIN" "$APP/Contents/MacOS/EverythingInOne"
 cp Info.plist "$APP/Contents/Info.plist"
+mkdir -p "$APP/Contents/Resources"
+cp Design/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 codesign --force --sign "$IDENTITY" "$APP"
 echo "Đã build: $(pwd)/$APP"

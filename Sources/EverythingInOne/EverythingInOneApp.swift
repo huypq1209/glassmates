@@ -28,10 +28,12 @@ struct EverythingInOneApp: App {
         }
 
         // Biểu tượng trên thanh menu: app vẫn chạy (và vẫn gắn app) khi đóng cửa sổ chính.
-        MenuBarExtra("EverythingInOne", systemImage: "rectangle.3.group") {
+        MenuBarExtra {
             MenuBarContent()
                 .environmentObject(workspaces)
                 .environmentObject(loginItem)
+        } label: {
+            Image(nsImage: MenuBarIcon.image)
         }
     }
 
