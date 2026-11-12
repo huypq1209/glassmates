@@ -141,13 +141,47 @@ enum WindowArranger {
             for (member, cell) in zip(members, cells) { place(member.window, in: cell) }
         }
 
+        // Chỉ đưa lên những app đang bị cửa sổ khác che. Nếu cả nhóm đã hiện rõ thì không làm gì,
+        // tránh việc focus nhảy qua lại giữa các app (gây giật màn hình).
         let others = members.filter { $0.pid != triggerPID }
+        let hidden = others.filter { isObstructed($0.pid, $0.window) }
+        debugLog("glue raise: \(hidden.map(\.item.appName)) / bỏ qua \(others.count - hidden.count) app đã hiện")
+        guard !hidden.isEmpty else { return }
+
         let trigger = members.filter { $0.pid == triggerPID }
-        for member in others + trigger {
+        for member in hidden + trigger {
             AXUIElementSetAttributeValue(member.app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
             AXUIElementPerformAction(member.window, kAXRaiseAction as CFString)
-            try? await Task.sleep(nanoseconds: 80_000_000)
+            try? await Task.sleep(nanoseconds: 60_000_000)
         }
+    }
+
+    /// Cửa sổ có đang bị một cửa sổ khác (thuộc app khác) nằm trên và đè lên không.
+    private static func isObstructed(_ pid: pid_t, _ window: AXUIElement) -> Bool {
+        guard let frame = frameOf(window),
+              let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]] else { return true }
+        // Danh sách đi từ trên xuống dưới.
+        for info in list {
+            guard (info[kCGWindowLayer as String] as? Int) == 0,
+                  let ownerPID = info[kCGWindowOwnerPID as String] as? pid_t,
+                  let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: boundsDict),
+                  bounds.width > 50, bounds.height > 50 else { continue }
+            if ownerPID == pid {
+                // Gặp chính cửa sổ này trước khi gặp cửa sổ nào che → không bị che.
+                if approximatelyEqual(bounds, frame, tolerance: 4) { return false }
+                continue
+            }
+            if (info[kCGWindowAlpha as String] as? Double ?? 1) < 0.05 { continue }
+            if bounds.intersection(frame).width > 8 && bounds.intersection(frame).height > 8 { return true }
+        }
+        return true   // không thấy trên màn hình (vd. ở Space khác) → coi như cần đưa lên
+    }
+
+    private static func approximatelyEqual(_ a: CGRect, _ b: CGRect, tolerance: CGFloat) -> Bool {
+        abs(a.minX - b.minX) <= tolerance && abs(a.minY - b.minY) <= tolerance
+            && abs(a.width - b.width) <= tolerance && abs(a.height - b.height) <= tolerance
     }
 
     /// Khung hiện tại của cửa sổ thật ứng với một app trong workspace (nil nếu app chưa chạy).
@@ -217,20 +251,33 @@ enum WindowArranger {
     }
 
     /// Đặt khung cho cửa sổ. Cửa sổ không co giãn được (vd. Simulator) sẽ được căn giữa trong ô.
+    /// Kết quả lần đặt trước cho từng ô: nếu cửa sổ vẫn đúng như kết quả đó thì không đặt lại
+    /// (vd. macOS đẩy cửa sổ xuống dưới thanh menu nên không bao giờ khớp đúng ô).
+    @MainActor private static var lastPlaced: [String: CGRect] = [:]
+
+    @MainActor
     private static func place(_ ax: AXUIElement, in cell: CGRect) {
-        // Gỡ trạng thái full screen / thu nhỏ nếu có.
+        let key = "\(Int(cell.minX)),\(Int(cell.minY)),\(Int(cell.width)),\(Int(cell.height))-\(CFHash(ax))"
+        if let current = frameOf(ax) {
+            if approximatelyEqual(current, cell, tolerance: 3) { return }
+            if let last = lastPlaced[key], approximatelyEqual(current, last, tolerance: 3) { return }
+            // Cửa sổ cố định kích thước (vd. Simulator) đã nằm giữa ô sẵn.
+            if current.width <= cell.width + 1, current.height <= cell.height + 1,
+               abs(current.midX - cell.midX) <= 3, abs(current.midY - cell.midY) <= 3 { return }
+        }
+
+        // Gỡ trạng thái thu nhỏ nếu có.
         AXUIElementSetAttributeValue(ax, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
 
         setSize(ax, cell.size)
-        setPosition(ax, cell.origin)
-        setSize(ax, cell.size)   // lần 2 để chắc khi app tự giới hạn kích thước
-
-        if let actual = frameOf(ax),
-           actual.width < cell.width - 1 || actual.height < cell.height - 1 {
-            let x = cell.minX + (cell.width - actual.width) / 2
-            let y = cell.minY + (cell.height - actual.height) / 2
-            setPosition(ax, CGPoint(x: x, y: y))
+        if let sized = frameOf(ax), sized.width < cell.width - 1 || sized.height < cell.height - 1 {
+            // Không co giãn được: đặt thẳng vào giữa ô, không qua góc ô (tránh nhảy 2 lần).
+            setPosition(ax, CGPoint(x: cell.midX - sized.width / 2, y: cell.midY - sized.height / 2))
+        } else {
+            setPosition(ax, cell.origin)
+            setSize(ax, cell.size)   // lần 2 để chắc khi app tự giới hạn kích thước theo màn hình
         }
+        if let result = frameOf(ax) { lastPlaced[key] = result }
     }
 
     private static func stringAttribute(_ el: AXUIElement, _ attr: String) -> String? {
