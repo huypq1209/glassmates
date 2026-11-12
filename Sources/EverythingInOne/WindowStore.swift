@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import ScreenCaptureKit
+import ApplicationServices
 
 /// Danh sách cửa sổ có thể chụp + các ô (tile) đang được hiển thị.
 @MainActor
@@ -58,6 +59,11 @@ final class WindowStore: ObservableObject {
     }
 
     private func add(_ window: SCWindow) {
+        // Cần quyền Accessibility để chuyển chuột / phím về app gốc.
+        if !AXIsProcessTrusted() {
+            let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+            _ = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
+        }
         let capture = WindowCapture(window: window)
         tiles.append(Tile(id: window.windowID, window: window, capture: capture))
     }
