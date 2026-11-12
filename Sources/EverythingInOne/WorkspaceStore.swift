@@ -7,6 +7,8 @@ struct Workspace: Codable, Identifiable, Equatable {
         var bundleID: String
         var appName: String
         var title: String
+        /// Vị trí tuỳ chỉnh (dùng khi bố cục = Tuỳ chỉnh).
+        var placement: Placement? = nil
     }
 
     var id = UUID()
@@ -87,6 +89,16 @@ final class WorkspaceStore: ObservableObject {
         persist()
     }
 
+    /// Lưu vị trí tuỳ chỉnh cho từng app và chuyển workspace sang bố cục Tuỳ chỉnh.
+    func setPlacements(_ id: UUID, _ placements: [Placement?]) {
+        guard let i = workspaces.firstIndex(where: { $0.id == id }) else { return }
+        for (index, placement) in placements.enumerated() where index < workspaces[i].items.count {
+            workspaces[i].items[index].placement = placement
+        }
+        workspaces[i].layout = .custom
+        persist()
+    }
+
     func setLayout(_ id: UUID, _ value: LayoutPreset) {
         guard let i = workspaces.firstIndex(where: { $0.id == id }) else { return }
         workspaces[i].layout = value
@@ -124,6 +136,17 @@ final class WorkspaceStore: ObservableObject {
                 }
             }
             if let window { found.append(window) } else { missing.append(item.appName) }
+        }
+
+        if workspace.layout == .custom {
+            let firstPID = workspace.items.lazy
+                .compactMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0.bundleID).first }
+                .first?.processIdentifier ?? 0
+            await WindowArranger.glue(workspace, triggerPID: firstPID, forceArrange: true)
+            status = missing.isEmpty
+                ? "Đã xếp \(workspace.name)."
+                : "Đã xếp \(workspace.name). Không mở được: \(missing.joined(separator: ", "))."
+            return
         }
 
         let result = await WindowArranger.arrange(found, preset: workspace.layout)

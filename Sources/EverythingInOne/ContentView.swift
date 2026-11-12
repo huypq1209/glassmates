@@ -305,6 +305,7 @@ struct WorkspaceRow: View {
     let workspace: Workspace
     @ObservedObject var store: WindowStore
     @EnvironmentObject private var workspaces: WorkspaceStore
+    @State private var showEditor = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -334,8 +335,14 @@ struct WorkspaceRow: View {
             ))
             .toggleStyle(.checkbox)
             .controlSize(.small)
+            Button("Tuỳ chỉnh vị trí…") { showEditor = true }
+                .controlSize(.small)
         }
         .padding(.vertical, 4)
+        .sheet(isPresented: $showEditor) {
+            LayoutEditor(workspace: workspace)
+                .environmentObject(workspaces)
+        }
         .contextMenu {
             Button("Mở và xếp ngay") { Task { await workspaces.open(workspace, store: store) } }
             Button("Xoá", role: .destructive) { workspaces.delete(workspace) }

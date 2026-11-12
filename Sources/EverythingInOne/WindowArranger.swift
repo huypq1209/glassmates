@@ -7,6 +7,7 @@ enum LayoutPreset: String, Codable, CaseIterable, Identifiable {
     case sideBySide   // chia đều theo chiều ngang
     case mainLeft     // cửa sổ đầu chiếm 2/3 bên trái, còn lại xếp dọc bên phải
     case grid         // lưới
+    case custom       // vị trí tự đặt cho từng app (có thể trên nhiều màn hình)
 
     var id: String { rawValue }
 
@@ -15,6 +16,7 @@ enum LayoutPreset: String, Codable, CaseIterable, Identifiable {
         case .sideBySide: return "Cạnh nhau"
         case .mainLeft: return "Chính 2/3 + phụ"
         case .grid: return "Lưới"
+        case .custom: return "Tuỳ chỉnh"
         }
     }
 }
@@ -46,7 +48,7 @@ enum WindowArranger {
         if n == 1 { return [a] }
 
         switch preset {
-        case .sideBySide:
+        case .sideBySide, .custom:
             let w = (a.width - gap * CGFloat(n - 1)) / CGFloat(n)
             return (0..<n).map { CGRect(x: a.minX + CGFloat($0) * (w + gap), y: a.minY, width: w, height: a.height) }
 
@@ -108,18 +110,25 @@ enum WindowArranger {
     /// Đưa các app trong nhóm lên cùng lúc khi một app trong nhóm được kích hoạt.
     /// App vừa được kích hoạt (`triggerPID`) lên cuối cùng để giữ focus.
     @MainActor
-    static func glue(_ workspace: Workspace, triggerPID: pid_t) async {
-        var members: [(pid: pid_t, app: AXUIElement, window: AXUIElement)] = []
+    static func glue(_ workspace: Workspace, triggerPID: pid_t, forceArrange: Bool = false) async {
+        var members: [(pid: pid_t, app: AXUIElement, window: AXUIElement, item: Workspace.Item)] = []
         for item in workspace.items {
             guard let running = NSRunningApplication.runningApplications(withBundleIdentifier: item.bundleID).first,
                   let window = mainWindow(pid: running.processIdentifier, preferredTitle: item.title)
             else { continue }
             let pid = running.processIdentifier
-            members.append((pid, AXUIElementCreateApplication(pid), window))
+            members.append((pid, AXUIElementCreateApplication(pid), window, item))
         }
-        guard members.count > 1 else { return }
+        guard !members.isEmpty else { return }
 
-        if workspace.rearrange {
+        if workspace.layout == .custom, workspace.rearrange || forceArrange {
+            let screens = Screens.all()
+            for member in members {
+                if let p = member.item.placement, let target = Screens.rect(for: p, in: screens) {
+                    place(member.window, in: target)
+                }
+            }
+        } else if workspace.rearrange || forceArrange {
             // Xếp trên màn hình chứa cửa sổ của app vừa được kích hoạt.
             let anchor = members.first(where: { $0.pid == triggerPID }).flatMap { frameOf($0.window) }
             let center = anchor.map { CGPoint(x: $0.midX, y: $0.midY) }
@@ -134,6 +143,13 @@ enum WindowArranger {
             AXUIElementPerformAction(member.window, kAXRaiseAction as CFString)
             try? await Task.sleep(nanoseconds: 80_000_000)
         }
+    }
+
+    /// Khung hiện tại của cửa sổ thật ứng với một app trong workspace (nil nếu app chưa chạy).
+    static func currentFrame(of item: Workspace.Item) -> CGRect? {
+        guard let running = NSRunningApplication.runningApplications(withBundleIdentifier: item.bundleID).first,
+              let window = mainWindow(pid: running.processIdentifier, preferredTitle: item.title) else { return nil }
+        return frameOf(window)
     }
 
     /// Cửa sổ chính của app: ưu tiên cửa sổ có tiêu đề khớp, rồi main window, rồi cửa sổ đầu tiên.
