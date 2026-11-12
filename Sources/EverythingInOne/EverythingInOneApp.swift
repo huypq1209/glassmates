@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct EverythingInOneApp: App {
     @StateObject private var workspaces: WorkspaceStore
+    @StateObject private var loginItem = LoginItem()
     private let glue: GlueManager
 
     init() {
@@ -17,17 +18,33 @@ struct EverythingInOneApp: App {
                 .environmentObject(workspaces)
                 .frame(minWidth: 900, minHeight: 560)
         }
+        .commands {
+            // Cmd+Q chỉ đóng cửa sổ; app vẫn chạy trên thanh menu để gắn app tiếp tục hoạt động.
+            // Muốn thoát hẳn: dùng "Thoát" trên biểu tượng thanh menu.
+            CommandGroup(replacing: .appTermination) {
+                Button("Đóng cửa sổ (vẫn chạy trên thanh menu)") { closeMainWindows() }
+                    .keyboardShortcut("q")
+            }
+        }
 
         // Biểu tượng trên thanh menu: app vẫn chạy (và vẫn gắn app) khi đóng cửa sổ chính.
         MenuBarExtra("EverythingInOne", systemImage: "rectangle.3.group") {
             MenuBarContent()
                 .environmentObject(workspaces)
+                .environmentObject(loginItem)
         }
+    }
+
+    private func closeMainWindows() {
+        NSApp.windows
+            .filter { $0.isVisible && $0.styleMask.contains(.titled) }
+            .forEach { $0.close() }
     }
 }
 
 struct MenuBarContent: View {
     @EnvironmentObject private var workspaces: WorkspaceStore
+    @EnvironmentObject private var loginItem: LoginItem
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -41,11 +58,18 @@ struct MenuBarContent: View {
             ))
         }
         Divider()
+        Toggle("Mở cùng máy khi đăng nhập", isOn: Binding(
+            get: { loginItem.enabled },
+            set: { loginItem.set($0) }
+        ))
+        if loginItem.needsApproval {
+            Button("Cần cho phép trong Login Items…") { loginItem.openSettings() }
+        }
+        Divider()
         Button("Mở EverythingInOne") {
             NSApp.activate(ignoringOtherApps: true)
             openWindow(id: "main")
         }
-        Button("Thoát") { NSApp.terminate(nil) }
-            .keyboardShortcut("q")
+        Button("Thoát hẳn") { NSApp.terminate(nil) }
     }
 }
