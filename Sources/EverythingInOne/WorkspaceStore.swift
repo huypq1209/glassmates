@@ -1,0 +1,108 @@
+import Foundation
+import AppKit
+import ScreenCaptureKit
+
+struct Workspace: Codable, Identifiable, Equatable {
+    struct Item: Codable, Equatable {
+        var bundleID: String
+        var appName: String
+        var title: String
+    }
+
+    var id = UUID()
+    var name: String
+    var layout: LayoutPreset
+    var items: [Item]
+}
+
+/// Lưu / mở lại workspace (nhóm app + bố cục).
+@MainActor
+final class WorkspaceStore: ObservableObject {
+    @Published private(set) var workspaces: [Workspace] = []
+    @Published var status: String?
+
+    private let key = "workspaces.v1"
+
+    init() { load() }
+
+    // MARK: Lưu trữ
+
+    private func load() {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let decoded = try? JSONDecoder().decode([Workspace].self, from: data) else { return }
+        workspaces = decoded
+    }
+
+    private func persist() {
+        if let data = try? JSONEncoder().encode(workspaces) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    func save(name: String, layout: LayoutPreset, windows: [SCWindow]) {
+        let items = windows.compactMap { w -> Workspace.Item? in
+            guard let app = w.owningApplication else { return nil }
+            return Workspace.Item(bundleID: app.bundleIdentifier, appName: app.applicationName, title: w.title ?? "")
+        }
+        guard !items.isEmpty else { return }
+        if let index = workspaces.firstIndex(where: { $0.name == name }) {
+            workspaces[index].layout = layout
+            workspaces[index].items = items
+        } else {
+            workspaces.append(Workspace(name: name, layout: layout, items: items))
+        }
+        persist()
+    }
+
+    func delete(_ workspace: Workspace) {
+        workspaces.removeAll { $0.id == workspace.id }
+        persist()
+    }
+
+    // MARK: Mở workspace
+
+    /// Mở app còn thiếu, tìm cửa sổ tương ứng, rồi xếp và đưa lên trước.
+    func open(_ workspace: Workspace, store: WindowStore) async {
+        guard AXIsProcessTrusted() else {
+            status = "Cần quyền Accessibility để xếp cửa sổ."
+            return
+        }
+        status = "Đang mở \(workspace.name)…"
+        await store.refresh()
+
+        var found: [SCWindow] = []
+        var missing: [String] = []
+
+        for item in workspace.items {
+            var window = match(item, in: store.windows)
+            if window == nil {
+                launchIfNeeded(item)
+                for _ in 0..<20 {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    await store.refresh()
+                    window = match(item, in: store.windows)
+                    if window != nil { break }
+                }
+            }
+            if let window { found.append(window) } else { missing.append(item.appName) }
+        }
+
+        let result = WindowArranger.arrange(found, preset: workspace.layout)
+        let notArranged = missing + result.missed
+        status = notArranged.isEmpty
+            ? "Đã xếp \(result.arranged) cửa sổ."
+            : "Đã xếp \(result.arranged) cửa sổ. Không xếp được: \(notArranged.joined(separator: ", "))."
+    }
+
+    private func match(_ item: Workspace.Item, in windows: [SCWindow]) -> SCWindow? {
+        let candidates = windows.filter { $0.owningApplication?.bundleIdentifier == item.bundleID }
+        return candidates.first(where: { $0.title == item.title }) ?? candidates.first
+    }
+
+    private func launchIfNeeded(_ item: Workspace.Item) {
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: item.bundleID)
+        guard running.isEmpty,
+              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: item.bundleID) else { return }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+    }
+}

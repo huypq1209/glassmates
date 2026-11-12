@@ -8,8 +8,13 @@ final class WindowCapture: NSObject, SCStreamOutput, SCStreamDelegate {
     let window: SCWindow
     var onFrame: ((IOSurface) -> Void)?
     var onStop: ((Error?) -> Void)?
+    /// Kích thước (point) mới của cửa sổ gốc.
+    var onResize: ((CGSize) -> Void)?
 
     private var stream: SCStream?
+    private var configWidth = 0
+    private var configHeight = 0
+    private var isResizing = false
     private let queue = DispatchQueue(label: "everythinginone.capture", qos: .userInteractive)
 
     init(window: SCWindow) {
@@ -24,6 +29,8 @@ final class WindowCapture: NSObject, SCStreamOutput, SCStreamDelegate {
         let config = SCStreamConfiguration()
         config.width = max(1, Int(info.contentRect.width * scale))
         config.height = max(1, Int(info.contentRect.height * scale))
+        configWidth = config.width
+        configHeight = config.height
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         config.queueDepth = 5
@@ -52,8 +59,41 @@ final class WindowCapture: NSObject, SCStreamOutput, SCStreamDelegate {
               let surface = CVPixelBufferGetIOSurface(pixelBuffer)?.takeUnretainedValue()
         else { return }
 
+        followSourceSize(attachments.first)
+
         DispatchQueue.main.async { [weak self] in
             self?.onFrame?(surface)
+        }
+    }
+
+    /// Khi cửa sổ gốc đổi kích thước, cập nhật luồng chụp cho khớp (không thì ảnh bị méo/giữ cỡ cũ).
+    private func followSourceSize(_ info: [SCStreamFrameInfo: Any]?) {
+        guard !isResizing,
+              let rectDict = info?[.contentRect] as? NSDictionary,
+              let rect = CGRect(dictionaryRepresentation: rectDict),
+              let scale = info?[.scaleFactor] as? CGFloat, rect.width > 0, rect.height > 0
+        else { return }
+        let wantW = Int(rect.width * scale)
+        let wantH = Int(rect.height * scale)
+        guard abs(wantW - configWidth) > 2 || abs(wantH - configHeight) > 2,
+              let stream else { return }
+
+        isResizing = true
+        configWidth = wantW
+        configHeight = wantH
+        let config = SCStreamConfiguration()
+        config.width = wantW
+        config.height = wantH
+        config.pixelFormat = kCVPixelFormatType_32BGRA
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+        config.queueDepth = 5
+        config.showsCursor = false
+        Task { [weak self] in
+            try? await stream.updateConfiguration(config)
+            self?.isResizing = false
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.onResize?(CGSize(width: rect.width, height: rect.height))
         }
     }
 

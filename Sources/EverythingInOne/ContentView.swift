@@ -3,12 +3,17 @@ import ScreenCaptureKit
 
 struct ContentView: View {
     @StateObject private var store = WindowStore()
+    @StateObject private var workspaces = WorkspaceStore()
+    @State private var layout: LayoutPreset = .sideBySide
+    @State private var showSave = false
+    @State private var saveName = ""
 
     var body: some View {
         NavigationSplitView {
             sidebar
         } detail: {
             detail
+                .safeAreaInset(edge: .bottom) { workspaceBar }
         }
         .task { await store.refresh() }
     }
@@ -55,6 +60,79 @@ struct ContentView: View {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
+    // MARK: Thanh workspace — xếp cửa sổ thật
+
+    private var workspaceBar: some View {
+        HStack(spacing: 10) {
+            Picker("Bố cục", selection: $layout) {
+                ForEach(LayoutPreset.allCases) { Text($0.title).tag($0) }
+            }
+            .frame(width: 220)
+
+            Button {
+                let windows = store.tiles.map(\.window)
+                let result = WindowArranger.arrange(windows, preset: layout)
+                workspaces.status = result.missed.isEmpty
+                    ? "Đã xếp \(result.arranged) cửa sổ."
+                    : "Đã xếp \(result.arranged). Không xếp được: \(result.missed.joined(separator: ", "))."
+            } label: {
+                Label("Xếp cửa sổ thật", systemImage: "rectangle.3.group")
+            }
+            .disabled(store.tiles.isEmpty || !store.hasAccessibility)
+            .help("Xếp các cửa sổ đã chọn cạnh nhau và đưa lên trước")
+
+            Button {
+                saveName = ""
+                showSave = true
+            } label: {
+                Label("Lưu workspace…", systemImage: "square.and.arrow.down")
+            }
+            .disabled(store.tiles.isEmpty)
+
+            Menu {
+                if workspaces.workspaces.isEmpty {
+                    Text("Chưa có workspace")
+                }
+                ForEach(workspaces.workspaces) { ws in
+                    Button("Mở: \(ws.name) (\(ws.items.count) app)") {
+                        layout = ws.layout
+                        Task { await workspaces.open(ws, store: store) }
+                    }
+                }
+                if !workspaces.workspaces.isEmpty {
+                    Divider()
+                    ForEach(workspaces.workspaces) { ws in
+                        Button("Xoá: \(ws.name)", role: .destructive) { workspaces.delete(ws) }
+                    }
+                }
+            } label: {
+                Label("Workspace", systemImage: "square.stack.3d.up")
+            }
+            .fixedSize()
+
+            Spacer()
+
+            if let status = workspaces.status {
+                Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.bar)
+        .alert("Lưu workspace", isPresented: $showSave) {
+            TextField("Tên workspace", text: $saveName)
+            Button("Lưu") {
+                let name = saveName.trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty else { return }
+                workspaces.save(name: name, layout: layout, windows: store.tiles.map(\.window))
+                workspaces.status = "Đã lưu workspace \(name)."
+            }
+            Button("Huỷ", role: .cancel) {}
+        } message: {
+            Text("Lưu các cửa sổ đang chọn và bố cục \(layout.title).")
+        }
+    }
+
     // MARK: Detail — lưới các ô đang chụp
 
     @ViewBuilder
@@ -68,14 +146,44 @@ struct ContentView: View {
                 description: Text("Chọn cửa sổ ở thanh bên trái để hiển thị tại đây.")
             )
         } else {
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 420), spacing: 12)], spacing: 12) {
-                    ForEach(store.tiles) { tile in
-                        TileView(tile: tile, store: store)
-                    }
-                }
-                .padding(12)
+            VStack(spacing: 0) {
+                if !store.hasAccessibility { accessibilityBanner }
+                grid
             }
+        }
+    }
+
+    private var accessibilityBanner: some View {
+        HStack {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+            Text("Chưa có quyền Accessibility nên không thao tác (chuột/phím) được trong ô.")
+                .font(.callout)
+            Spacer()
+            Button("Cấp quyền") { store.requestAccessibility() }
+            Button("Mở System Settings") {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+            }
+        }
+        .padding(8)
+        .background(.yellow.opacity(0.15))
+    }
+
+    /// Chia đều không gian cho các ô, ô nào cũng lấp đầy phần của mình (nội dung giữ đúng tỉ lệ app gốc).
+    private var grid: some View {
+        GeometryReader { geo in
+            let count = max(store.tiles.count, 1)
+            let cols = Int(ceil(sqrt(Double(count))))
+            let rows = Int(ceil(Double(count) / Double(cols)))
+            let gap: CGFloat = 12
+            let w = max((geo.size.width - gap * CGFloat(cols + 1)) / CGFloat(cols), 120)
+            let h = max((geo.size.height - gap * CGFloat(rows + 1)) / CGFloat(rows), 120)
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(w), spacing: gap), count: cols), spacing: gap) {
+                ForEach(store.tiles) { tile in
+                    TileView(tile: tile, store: store)
+                        .frame(width: w, height: h)
+                }
+            }
+            .padding(gap)
         }
     }
 
@@ -132,10 +240,10 @@ struct TileView: View {
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
                 }
             }
-            .aspectRatio(tile.window.frame.width / max(tile.window.frame.height, 1), contentMode: .fit)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.quaternary).allowsHitTesting(false))
         .task {
             tile.capture.onStop = { error in
                 failure = error?.localizedDescription ?? "Luồng chụp đã dừng"

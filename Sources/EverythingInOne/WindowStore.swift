@@ -16,6 +16,25 @@ final class WindowStore: ObservableObject {
     @Published var tiles: [Tile] = []
     @Published var hasPermission = CGPreflightScreenCaptureAccess()
     @Published var errorMessage: String?
+    @Published var hasAccessibility = AXIsProcessTrusted()
+
+    private var accessibilityTimer: Timer?
+
+    init() {
+        // Quyền Accessibility có thể bật bất cứ lúc nào trong System Settings → theo dõi để banner tự ẩn.
+        accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                let trusted = AXIsProcessTrusted()
+                if trusted != self.hasAccessibility { self.hasAccessibility = trusted }
+            }
+        }
+    }
+
+    func requestAccessibility() {
+        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        hasAccessibility = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
+    }
 
     func requestPermission() {
         hasPermission = CGRequestScreenCaptureAccess()

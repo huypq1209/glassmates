@@ -1,0 +1,167 @@
+import Foundation
+import AppKit
+import ApplicationServices
+import ScreenCaptureKit
+
+enum LayoutPreset: String, Codable, CaseIterable, Identifiable {
+    case sideBySide   // chia đều theo chiều ngang
+    case mainLeft     // cửa sổ đầu chiếm 2/3 bên trái, còn lại xếp dọc bên phải
+    case grid         // lưới
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .sideBySide: return "Cạnh nhau"
+        case .mainLeft: return "Chính 2/3 + phụ"
+        case .grid: return "Lưới"
+        }
+    }
+}
+
+/// Sắp xếp cửa sổ THẬT của các app khác bằng Accessibility API.
+enum WindowArranger {
+    struct Result {
+        var arranged = 0
+        var missed: [String] = []
+    }
+
+    /// Vùng làm việc của màn hình hiện tại, theo toạ độ Accessibility (gốc ở góc trên trái màn hình chính).
+    static func workArea() -> CGRect {
+        let screens = NSScreen.screens
+        guard let primary = screens.first else { return .zero }
+        let screen = NSScreen.main ?? primary
+        let v = screen.visibleFrame
+        return CGRect(x: v.minX, y: primary.frame.height - v.maxY, width: v.width, height: v.height)
+    }
+
+    static func rects(count n: Int, preset: LayoutPreset, in area: CGRect, gap: CGFloat = 8) -> [CGRect] {
+        guard n > 0 else { return [] }
+        let a = area.insetBy(dx: gap, dy: gap)
+        if n == 1 { return [a] }
+
+        switch preset {
+        case .sideBySide:
+            let w = (a.width - gap * CGFloat(n - 1)) / CGFloat(n)
+            return (0..<n).map { CGRect(x: a.minX + CGFloat($0) * (w + gap), y: a.minY, width: w, height: a.height) }
+
+        case .mainLeft:
+            let mainW = (a.width - gap) * 2 / 3
+            let sideW = a.width - gap - mainW
+            let others = n - 1
+            let h = (a.height - gap * CGFloat(others - 1)) / CGFloat(others)
+            var result = [CGRect(x: a.minX, y: a.minY, width: mainW, height: a.height)]
+            for i in 0..<others {
+                result.append(CGRect(x: a.minX + mainW + gap, y: a.minY + CGFloat(i) * (h + gap), width: sideW, height: h))
+            }
+            return result
+
+        case .grid:
+            let cols = Int(ceil(sqrt(Double(n))))
+            let rows = Int(ceil(Double(n) / Double(cols)))
+            let w = (a.width - gap * CGFloat(cols - 1)) / CGFloat(cols)
+            let h = (a.height - gap * CGFloat(rows - 1)) / CGFloat(rows)
+            return (0..<n).map {
+                CGRect(x: a.minX + CGFloat($0 % cols) * (w + gap), y: a.minY + CGFloat($0 / cols) * (h + gap), width: w, height: h)
+            }
+        }
+    }
+
+    /// Xếp các cửa sổ theo bố cục và đưa tất cả lên trước.
+    static func arrange(_ windows: [SCWindow], preset: LayoutPreset) -> Result {
+        var result = Result()
+        let cells = rects(count: windows.count, preset: preset, in: workArea())
+
+        var raised: [(app: AXUIElement, window: AXUIElement)] = []
+        for (window, cell) in zip(windows, cells) {
+            let name = window.owningApplication?.applicationName ?? window.title ?? "?"
+            guard let pid = window.owningApplication?.processID,
+                  let ax = axWindow(pid: pid, title: window.title, frame: window.frame) else {
+                result.missed.append(name)
+                continue
+            }
+            place(ax, in: cell)
+            raised.append((AXUIElementCreateApplication(pid), ax))
+            result.arranged += 1
+        }
+
+        for item in raised {
+            AXUIElementSetAttributeValue(item.app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+            AXUIElementPerformAction(item.window, kAXRaiseAction as CFString)
+        }
+        return result
+    }
+
+    // MARK: - Accessibility helpers
+
+    private static func axWindow(pid: pid_t, title: String?, frame: CGRect) -> AXUIElement? {
+        let app = AXUIElementCreateApplication(pid)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
+              let windows = value as? [AXUIElement] else { return nil }
+
+        var best: (element: AXUIElement, score: CGFloat)?
+        for w in windows {
+            let t = stringAttribute(w, kAXTitleAttribute)
+            let f = frameOf(w)
+            var score: CGFloat = (t == title) ? 0 : 10_000
+            if let f { score += abs(f.minX - frame.minX) + abs(f.minY - frame.minY) + abs(f.width - frame.width) + abs(f.height - frame.height) }
+            else { score += 5_000 }
+            if best == nil || score < best!.score { best = (w, score) }
+        }
+        guard let best, best.score < 10_000 || title == nil || stringAttribute(best.element, kAXTitleAttribute) == title else { return nil }
+        return best.element
+    }
+
+    /// Đặt khung cho cửa sổ. Cửa sổ không co giãn được (vd. Simulator) sẽ được căn giữa trong ô.
+    private static func place(_ ax: AXUIElement, in cell: CGRect) {
+        // Gỡ trạng thái full screen / thu nhỏ nếu có.
+        AXUIElementSetAttributeValue(ax, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+
+        setSize(ax, cell.size)
+        setPosition(ax, cell.origin)
+        setSize(ax, cell.size)   // lần 2 để chắc khi app tự giới hạn kích thước
+
+        if let actual = frameOf(ax),
+           actual.width < cell.width - 1 || actual.height < cell.height - 1 {
+            let x = cell.minX + (cell.width - actual.width) / 2
+            let y = cell.minY + (cell.height - actual.height) / 2
+            setPosition(ax, CGPoint(x: x, y: y))
+        }
+    }
+
+    private static func stringAttribute(_ el: AXUIElement, _ attr: String) -> String? {
+        var v: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success else { return nil }
+        return v as? String
+    }
+
+    private static func frameOf(_ el: AXUIElement) -> CGRect? {
+        var pv: CFTypeRef?
+        var sv: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, kAXPositionAttribute as CFString, &pv) == .success,
+              AXUIElementCopyAttributeValue(el, kAXSizeAttribute as CFString, &sv) == .success,
+              let pv, let sv,
+              CFGetTypeID(pv) == AXValueGetTypeID(), CFGetTypeID(sv) == AXValueGetTypeID()
+        else { return nil }
+        var p = CGPoint.zero
+        var s = CGSize.zero
+        AXValueGetValue(pv as! AXValue, .cgPoint, &p)
+        AXValueGetValue(sv as! AXValue, .cgSize, &s)
+        return CGRect(origin: p, size: s)
+    }
+
+    private static func setPosition(_ el: AXUIElement, _ point: CGPoint) {
+        var p = point
+        if let v = AXValueCreate(.cgPoint, &p) {
+            AXUIElementSetAttributeValue(el, kAXPositionAttribute as CFString, v)
+        }
+    }
+
+    private static func setSize(_ el: AXUIElement, _ size: CGSize) {
+        var s = size
+        if let v = AXValueCreate(.cgSize, &s) {
+            AXUIElementSetAttributeValue(el, kAXSizeAttribute as CFString, v)
+        }
+    }
+}

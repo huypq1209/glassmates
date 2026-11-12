@@ -104,6 +104,7 @@ final class InputView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        debugLog("mouseDown AX=\(AXIsProcessTrusted()) pid=\(targetPID ?? -1) point=\(String(describing: globalPoint(for: event))) frame=\(liveWindowFrame()) surface=\(surfaceSize) bounds=\(bounds)")
         window?.makeFirstResponder(self)
         sendMouse(.leftMouseDown, button: .left, event: event)
     }
@@ -160,5 +161,18 @@ final class InputView: NSView {
         sendKey(event, down: true)
         sendKey(event, down: false)
         return true
+    }
+}
+
+/// Log ra file để đọc được (NSLog bị macOS ẩn nội dung).
+func debugLog(_ message: String) {
+    let url = URL(fileURLWithPath: NSHomeDirectory() + "/Library/Logs/Glassmates/debug.log")
+    let line = "\(Date()) \(message)\n"
+    if let handle = try? FileHandle(forWritingTo: url) {
+        handle.seekToEndOfFile()
+        handle.write(Data(line.utf8))
+        try? handle.close()
+    } else {
+        try? line.write(to: url, atomically: true, encoding: .utf8)
     }
 }
