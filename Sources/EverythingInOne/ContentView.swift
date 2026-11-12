@@ -74,7 +74,8 @@ struct ContentView: View {
     private var workspaceBar: some View {
         HStack(spacing: 10) {
             Picker("Bố cục", selection: $layout) {
-                ForEach(LayoutPreset.allCases) { Text($0.title).tag($0) }
+                // "Tuỳ chỉnh" chỉ đặt qua "Tuỳ chỉnh vị trí…" của từng workspace.
+                ForEach(LayoutPreset.allCases.filter { $0 != .custom }) { Text($0.title).tag($0) }
             }
             .frame(width: 220)
 

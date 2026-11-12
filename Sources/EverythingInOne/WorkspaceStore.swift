@@ -57,19 +57,33 @@ final class WorkspaceStore: ObservableObject {
     }
 
     private func persist() {
-        if let data = try? JSONEncoder().encode(workspaces) {
+        do {
+            let data = try JSONEncoder().encode(workspaces)
             UserDefaults.standard.set(data, forKey: key)
+            let summary = workspaces.map { ws in
+                "\(ws.name)[\(ws.layout.rawValue)] placements=\(ws.items.filter { $0.placement != nil }.count)/\(ws.items.count)"
+            }
+            debugLog("persist: \(summary.joined(separator: "; "))")
+        } catch {
+            debugLog("persist LỖI: \(error)")
+            status = "Không lưu được: \(error.localizedDescription)"
         }
     }
 
     func save(name: String, layout: LayoutPreset, windows: [SCWindow]) {
-        let items = windows.compactMap { w -> Workspace.Item? in
+        var items = windows.compactMap { w -> Workspace.Item? in
             guard let app = w.owningApplication else { return nil }
             return Workspace.Item(bundleID: app.bundleIdentifier, appName: app.applicationName, title: w.title ?? "")
         }
         guard !items.isEmpty else { return }
         if let index = workspaces.firstIndex(where: { $0.name == name }) {
-            workspaces[index].layout = layout
+            // Lưu đè: giữ lại vị trí tuỳ chỉnh của các app đã có trong workspace.
+            let old = workspaces[index].items
+            for i in items.indices {
+                items[i].placement = old.first(where: { $0.bundleID == items[i].bundleID })?.placement
+            }
+            let keepsCustom = workspaces[index].layout == .custom && items.contains { $0.placement != nil }
+            workspaces[index].layout = keepsCustom ? .custom : layout
             workspaces[index].items = items
         } else {
             workspaces.append(Workspace(name: name, layout: layout, items: items))

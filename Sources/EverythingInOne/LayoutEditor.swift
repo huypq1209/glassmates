@@ -229,6 +229,7 @@ struct LayoutEditor: View {
     }
 
     private func save() {
+        debugLog("LayoutEditor.save \(workspace.name): \(placements)")
         workspaces.setPlacements(workspace.id, placements)
         workspaces.status = "Đã lưu vị trí tuỳ chỉnh cho \(workspace.name)."
         dismiss()
