@@ -161,7 +161,7 @@ final class InputView: NSView {
     override func keyUp(with event: NSEvent) { sendKey(event, down: false) }
 
     /// Cho phép Cmd+C / Cmd+V... đi tới app gốc khi ô đang được focus,
-    /// trừ các phím điều khiển chính EverythingInOne.
+    /// trừ các phím điều khiển chính Glassmates.
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard window?.firstResponder === self, event.type == .keyDown else { return false }
         let reserved: Set<String> = ["q", "w", "m", "h", ","]

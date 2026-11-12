@@ -235,7 +235,7 @@ struct ContentView: View {
         ContentUnavailableView {
             Label("Cần quyền Screen Recording", systemImage: "lock.rectangle")
         } description: {
-            Text("Bật quyền cho EverythingInOne trong System Settings → Privacy & Security → Screen & System Audio Recording, rồi mở lại app.")
+            Text("Bật quyền cho Glassmates trong System Settings → Privacy & Security → Screen & System Audio Recording, rồi mở lại app.")
         } actions: {
             Button("Yêu cầu quyền") { store.requestPermission() }
             Button("Mở System Settings") {

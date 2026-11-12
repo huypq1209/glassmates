@@ -13,7 +13,7 @@ struct EverythingInOneApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("EverythingInOne", id: "main") {
+        WindowGroup("Glassmates", id: "main") {
             ContentView()
                 .environmentObject(workspaces)
                 .frame(minWidth: 900, minHeight: 560)
@@ -68,7 +68,7 @@ struct MenuBarContent: View {
             Button("Cần cho phép trong Login Items…") { loginItem.openSettings() }
         }
         Divider()
-        Button("Mở EverythingInOne") {
+        Button("Mở Glassmates") {
             NSApp.activate(ignoringOtherApps: true)
             openWindow(id: "main")
         }

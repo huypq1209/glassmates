@@ -2,8 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>EverythingInOne</string>
-    <key>CFBundleDisplayName</key><string>EverythingInOne</string>
+    <key>CFBundleName</key><string>Glassmates</string>
+    <key>CFBundleDisplayName</key><string>Glassmates</string>
     <key>CFBundleIdentifier</key><string>com.huypham.everythinginone</string>
     <key>CFBundleExecutable</key><string>EverythingInOne</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
