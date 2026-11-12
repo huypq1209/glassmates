@@ -126,7 +126,7 @@ drag the frames around both displays, and click **Save**.
 You need Xcode 15 or later (Swift 5.9+). Developed with Xcode 26.
 
 ```bash
-git clone https://github.com/OWNER/glassmates.git
+git clone https://github.com/huypq1209/glassmates.git
 cd glassmates
 ./build.sh
 open build/Glassmates.app
