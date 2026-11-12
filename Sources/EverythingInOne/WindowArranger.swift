@@ -100,17 +100,32 @@ enum WindowArranger {
         guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
               let windows = value as? [AXUIElement] else { return nil }
 
-        var best: (element: AXUIElement, score: CGFloat)?
+        // Tiêu đề AX có thể khác tiêu đề của ScreenCaptureKit (vd. Simulator thêm "– iOS 26.1"),
+        // nên ưu tiên khớp tiêu đề, còn lại khớp theo vị trí + kích thước.
+        var best: (element: AXUIElement, distance: CGFloat, titleMatches: Bool)?
         for w in windows {
             let t = stringAttribute(w, kAXTitleAttribute)
-            let f = frameOf(w)
-            var score: CGFloat = (t == title) ? 0 : 10_000
-            if let f { score += abs(f.minX - frame.minX) + abs(f.minY - frame.minY) + abs(f.width - frame.width) + abs(f.height - frame.height) }
-            else { score += 5_000 }
-            if best == nil || score < best!.score { best = (w, score) }
+            let titleMatches = title != nil && t != nil
+                && (t == title || t!.contains(title!) || title!.contains(t!))
+            let distance: CGFloat
+            if let f = frameOf(w) {
+                distance = abs(f.minX - frame.minX) + abs(f.minY - frame.minY)
+                    + abs(f.width - frame.width) + abs(f.height - frame.height)
+            } else {
+                distance = .greatestFiniteMagnitude
+            }
+            let better: Bool
+            if let b = best {
+                better = (titleMatches != b.titleMatches) ? titleMatches : distance < b.distance
+            } else {
+                better = true
+            }
+            if better { best = (w, distance, titleMatches) }
         }
-        guard let best, best.score < 10_000 || title == nil || stringAttribute(best.element, kAXTitleAttribute) == title else { return nil }
-        return best.element
+        guard let best else { debugLog("axWindow: pid=\(pid) không có cửa sổ AX nào"); return nil }
+        if best.titleMatches || best.distance < 80 || windows.count == 1 { return best.element }
+        debugLog("axWindow: pid=\(pid) title=\(title ?? "nil") không khớp (distance=\(best.distance), số cửa sổ AX=\(windows.count))")
+        return nil
     }
 
     /// Đặt khung cho cửa sổ. Cửa sổ không co giãn được (vd. Simulator) sẽ được căn giữa trong ô.
