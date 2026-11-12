@@ -308,6 +308,17 @@ struct WorkspaceRow: View {
     @EnvironmentObject private var workspaces: WorkspaceStore
     @State private var showEditor = false
 
+    /// Cửa sổ đang mở thuộc các app chưa có trong workspace (mỗi app 1 dòng).
+    private var addableWindows: [SCWindow] {
+        let existing = Set(workspace.items.map(\.bundleID))
+        var seen = Set<String>()
+        return store.windows.filter { window in
+            guard let id = window.owningApplication?.bundleIdentifier,
+                  !existing.contains(id) else { return false }
+            return seen.insert(id).inserted
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -320,8 +331,41 @@ struct WorkspaceRow: View {
                 .toggleStyle(.switch)
                 .controlSize(.mini)
             }
-            Text(workspace.items.map(\.appName).joined(separator: " + "))
-                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            // Danh sách app trong workspace, bỏ từng app được.
+            ForEach(Array(workspace.items.enumerated()), id: \.offset) { index, item in
+                HStack(spacing: 4) {
+                    Text("\(index + 1). \(item.appName)")
+                        .font(.caption)
+                        .lineLimit(1)
+                    Spacer()
+                    Button {
+                        workspaces.removeItem(workspace.id, at: index)
+                    } label: {
+                        Image(systemName: "minus.circle")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Bỏ \(item.appName) khỏi workspace")
+                }
+            }
+
+            Menu {
+                let candidates = addableWindows
+                if candidates.isEmpty {
+                    Text("Không có cửa sổ nào khác đang mở")
+                }
+                ForEach(candidates, id: \.windowID) { window in
+                    Button("\(window.owningApplication?.applicationName ?? "?") — \(window.title ?? "")") {
+                        workspaces.addItem(workspace.id, window: window)
+                    }
+                }
+                Divider()
+                Button("Làm mới danh sách cửa sổ") { Task { await store.refresh() } }
+            } label: {
+                Label("Thêm app", systemImage: "plus.circle")
+            }
+            .controlSize(.small)
+            .fixedSize()
             Picker("Bố cục", selection: Binding(
                 get: { workspace.layout },
                 set: { workspaces.setLayout(workspace.id, $0) }

@@ -119,6 +119,28 @@ final class WorkspaceStore: ObservableObject {
         persist()
     }
 
+    /// Thêm một cửa sổ (app) vào workspace đã lưu. Bố cục Tuỳ chỉnh: lấy vị trí hiện tại làm vị trí mặc định.
+    func addItem(_ id: UUID, window: SCWindow) {
+        guard let i = workspaces.firstIndex(where: { $0.id == id }),
+              let app = window.owningApplication,
+              !workspaces[i].items.contains(where: { $0.bundleID == app.bundleIdentifier }) else { return }
+        var item = Workspace.Item(bundleID: app.bundleIdentifier, appName: app.applicationName, title: window.title ?? "")
+        if workspaces[i].layout == .custom {
+            item.placement = Screens.placement(for: window.frame, in: Screens.all())
+        }
+        workspaces[i].items.append(item)
+        persist()
+        status = "Đã thêm \(item.appName) vào \(workspaces[i].name)."
+    }
+
+    func removeItem(_ id: UUID, at index: Int) {
+        guard let i = workspaces.firstIndex(where: { $0.id == id }),
+              workspaces[i].items.indices.contains(index) else { return }
+        let removed = workspaces[i].items.remove(at: index)
+        persist()
+        status = "Đã bỏ \(removed.appName) khỏi \(workspaces[i].name)."
+    }
+
     func delete(_ workspace: Workspace) {
         workspaces.removeAll { $0.id == workspace.id }
         persist()
