@@ -27,10 +27,15 @@ enum WindowArranger {
     }
 
     /// Vùng làm việc của màn hình hiện tại, theo toạ độ Accessibility (gốc ở góc trên trái màn hình chính).
-    static func workArea() -> CGRect {
+    /// Nếu truyền `containing` (toạ độ AX), dùng màn hình chứa điểm đó.
+    static func workArea(containing point: CGPoint? = nil) -> CGRect {
         let screens = NSScreen.screens
         guard let primary = screens.first else { return .zero }
-        let screen = NSScreen.main ?? primary
+        var screen = NSScreen.main ?? primary
+        if let point {
+            let nsPoint = CGPoint(x: point.x, y: primary.frame.height - point.y)
+            if let match = screens.first(where: { $0.frame.contains(nsPoint) }) { screen = match }
+        }
         let v = screen.visibleFrame
         return CGRect(x: v.minX, y: primary.frame.height - v.maxY, width: v.width, height: v.height)
     }
@@ -115,7 +120,10 @@ enum WindowArranger {
         guard members.count > 1 else { return }
 
         if workspace.rearrange {
-            let cells = rects(count: members.count, preset: workspace.layout, in: workArea())
+            // Xếp trên màn hình chứa cửa sổ của app vừa được kích hoạt.
+            let anchor = members.first(where: { $0.pid == triggerPID }).flatMap { frameOf($0.window) }
+            let center = anchor.map { CGPoint(x: $0.midX, y: $0.midY) }
+            let cells = rects(count: members.count, preset: workspace.layout, in: workArea(containing: center))
             for (member, cell) in zip(members, cells) { place(member.window, in: cell) }
         }
 
