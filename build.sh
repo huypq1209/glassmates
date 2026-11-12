@@ -1,10 +1,18 @@
 #!/bin/bash
-# Build Glassmates (target EverythingInOne) thành .app và ký bằng chứng chỉ Apple Development
-# (ký ổn định để macOS nhớ quyền Screen Recording giữa các lần build).
+# Build Glassmates (target EverythingInOne) thành build/Glassmates.app.
+# Ký app: dùng SIGN_IDENTITY nếu có; không thì dùng chứng chỉ "Apple Development" nếu máy có
+# (ký ổn định để macOS nhớ quyền giữa các lần build); không có nữa thì ký ad-hoc ("-").
+#   SIGN_IDENTITY=- ./build.sh      # ép ký ad-hoc (dùng cho bản phát hành công khai)
 set -euo pipefail
 cd "$(dirname "$0")"
 
-IDENTITY="${SIGN_IDENTITY:-Apple Development}"
+if [ -n "${SIGN_IDENTITY:-}" ]; then
+  IDENTITY="$SIGN_IDENTITY"
+elif security find-identity -v -p codesigning 2>/dev/null | grep -q "Apple Development"; then
+  IDENTITY="Apple Development"
+else
+  IDENTITY="-"
+fi
 APP="build/Glassmates.app"
 
 swift build -c release
@@ -19,4 +27,5 @@ cp Design/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp -R Resources/*.lproj "$APP/Contents/Resources/"   # ngôn ngữ: en (mặc định), vi
 
 codesign --force --sign "$IDENTITY" "$APP"
+echo "Ký bằng: $IDENTITY"
 echo "Đã build: $(pwd)/$APP"

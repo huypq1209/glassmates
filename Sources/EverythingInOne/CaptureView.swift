@@ -174,9 +174,14 @@ final class InputView: NSView {
     }
 }
 
-/// Log ra file để đọc được (NSLog bị macOS ẩn nội dung).
+/// Log chẩn đoán, TẮT mặc định. Bật bằng:
+///   defaults write com.huypham.everythinginone debugLog -bool true
+/// Ghi vào ~/Library/Logs/Glassmates/debug.log
 func debugLog(_ message: String) {
-    let url = URL(fileURLWithPath: NSHomeDirectory() + "/Library/Logs/Glassmates/debug.log")
+    guard UserDefaults.standard.bool(forKey: "debugLog") else { return }
+    let dir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Logs/Glassmates")
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent("debug.log")
     let line = "\(Date()) \(message)\n"
     if let handle = try? FileHandle(forWritingTo: url) {
         handle.seekToEndOfFile()
