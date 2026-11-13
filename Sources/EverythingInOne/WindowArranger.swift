@@ -84,7 +84,7 @@ enum WindowArranger {
         for (window, cell) in zip(windows, cells) {
             let name = window.owningApplication?.applicationName ?? window.title ?? "?"
             guard let pid = window.owningApplication?.processID,
-                  let ax = axWindow(pid: pid, title: window.title, frame: window.frame) else {
+                  let ax = axWindow(pid: pid, windowID: window.windowID, title: window.title, frame: window.frame) else {
                 result.missed.append(name)
                 continue
             }
@@ -107,35 +107,67 @@ enum WindowArranger {
 
     // MARK: - Gắn app (glue)
 
-    /// Đưa các app trong nhóm lên cùng lúc khi một app trong nhóm được kích hoạt.
-    /// App vừa được kích hoạt (`triggerPID`) lên cuối cùng để giữ focus.
+    /// Cập nhật mã cửa sổ cho một mục khi cửa sổ cũ không còn và đã nhận lại được cửa sổ mới.
+    struct Rebind {
+        let itemIndex: Int
+        let windowID: UInt32
+        let title: String?
+    }
+
+    struct Member {
+        let index: Int
+        let pid: pid_t
+        let app: AXUIElement
+        let window: AXUIElement
+        let windowID: CGWindowID?
+        let item: Workspace.Item
+    }
+
+    /// Tìm đúng cửa sổ của từng mục (theo mã cửa sổ). Mục nào không xác định chắc chắn thì bỏ qua.
     @MainActor
-    static func glue(_ workspace: Workspace, triggerPID: pid_t, forceArrange: Bool = false) async {
-        var members: [(pid: pid_t, app: AXUIElement, window: AXUIElement, item: Workspace.Item)] = []
-        for item in workspace.items {
-            guard let running = NSRunningApplication.runningApplications(withBundleIdentifier: item.bundleID).first,
-                  let window = mainWindow(pid: running.processIdentifier, preferredTitle: item.title)
-            else { continue }
-            let pid = running.processIdentifier
-            members.append((pid, AXUIElementCreateApplication(pid), window, item))
+    static func members(of workspace: Workspace) -> (members: [Member], rebinds: [Rebind]) {
+        let screens = Screens.all()
+        var members: [Member] = []
+        var rebinds: [Rebind] = []
+        var used = Set<CGWindowID>()
+        for (index, item) in workspace.items.enumerated() {
+            let expected = item.placement.flatMap { Screens.rect(for: $0, in: screens) }
+            guard let r = WindowResolver.resolve(item, expectedFrame: expected) else { continue }
+            if let id = r.windowID {
+                guard !used.contains(id) else { continue }   // 2 mục không được trỏ cùng 1 cửa sổ
+                used.insert(id)
+                if !r.exact {
+                    rebinds.append(Rebind(itemIndex: index, windowID: id,
+                                          title: stringAttribute(r.window, kAXTitleAttribute)))
+                }
+            }
+            members.append(Member(index: index, pid: r.pid, app: AXUIElementCreateApplication(r.pid),
+                                  window: r.window, windowID: r.windowID, item: item))
         }
-        debugLog("glue \(workspace.name) trigger=\(triggerPID) members=\(members.map { "\($0.item.appName)#\($0.pid)" }) / items=\(workspace.items.map(\.appName))")
-        guard !members.isEmpty else { return }
+        return (members, rebinds)
+    }
+
+    /// Đưa cả nhóm lên khi một cửa sổ trong nhóm được focus.
+    /// `trigger`: mã cửa sổ vừa được focus (nil = coi cửa sổ đầu tiên của nhóm là cửa sổ được chọn).
+    /// Trả về các mục cần cập nhật mã cửa sổ.
+    @MainActor
+    @discardableResult
+    static func glue(_ workspace: Workspace, trigger: CGWindowID?, forceArrange: Bool = false) async -> [Rebind] {
+        let (members, rebinds) = members(of: workspace)
+        let triggerMember = trigger.flatMap { t in members.first { $0.windowID == t } } ?? members.first
+        debugLog("glue \(workspace.name) trigger=\(trigger.map(String.init) ?? "nil") members=\(members.map { "\($0.item.appName)#\($0.windowID.map(String.init) ?? "?")" }) / \(workspace.items.count) mục")
+        guard !members.isEmpty else { return rebinds }
 
         if workspace.layout == .custom, workspace.rearrange || forceArrange {
             let screens = Screens.all()
             for member in members {
                 if let p = member.item.placement, let target = Screens.rect(for: p, in: screens) {
-                    let before = frameOf(member.window)
                     place(member.window, in: target)
-                    debugLog("glue place \(member.item.appName) title=\(stringAttribute(member.window, kAXTitleAttribute) ?? "nil") before=\(String(describing: before)) target=\(target) after=\(String(describing: frameOf(member.window)))")
-                } else {
-                    debugLog("glue place \(member.item.appName): không có vị trí")
                 }
             }
         } else if workspace.rearrange || forceArrange {
-            // Xếp trên màn hình chứa cửa sổ của app vừa được kích hoạt.
-            let anchor = members.first(where: { $0.pid == triggerPID }).flatMap { frameOf($0.window) }
+            // Xếp trên màn hình chứa cửa sổ vừa được chọn.
+            let anchor = triggerMember.flatMap { frameOf($0.window) }
             let center = anchor.map { CGPoint(x: $0.midX, y: $0.midY) }
             let cells = rects(count: members.count, preset: workspace.layout, in: workArea(containing: center))
             for (member, cell) in zip(members, cells) { place(member.window, in: cell) }
@@ -145,40 +177,40 @@ enum WindowArranger {
             minimizeOverlappingExtras(members.map { ($0.pid, $0.window, $0.item.appName) })
         }
 
-        // Chỉ đưa lên những app đang bị cửa sổ khác che. Nếu cả nhóm đã hiện rõ thì không làm gì,
-        // tránh việc focus nhảy qua lại giữa các app (gây giật màn hình).
-        let others = members.filter { $0.pid != triggerPID }
-        let hidden = others.filter { isObstructed($0.pid, $0.window) }
-        debugLog("glue raise: \(hidden.map(\.item.appName)) / bỏ qua \(others.count - hidden.count) app đã hiện")
-        guard !hidden.isEmpty else { return }
+        // Chỉ đưa lên những cửa sổ đang bị che. Nếu cả nhóm đã hiện rõ thì không làm gì (tránh giật).
+        let others = members.filter { $0.index != triggerMember?.index }
+        let hidden = others.filter { isObstructed($0.pid, $0.window, windowID: $0.windowID) }
+        debugLog("glue raise: \(hidden.map(\.item.appName)) / bỏ qua \(others.count - hidden.count) cửa sổ đã hiện")
+        guard !hidden.isEmpty else { return rebinds }
 
-        // Cách 1: chỉ raise cửa sổ, KHÔNG chuyển focus. App vừa bấm giữ nguyên focus,
-        // nên không bị kích hoạt lại (kích hoạt lại sẽ kéo các cửa sổ khác của nó lên che nhóm).
+        // Cách 1: chỉ raise cửa sổ, KHÔNG chuyển focus.
         for member in hidden {
             AXUIElementPerformAction(member.window, kAXRaiseAction as CFString)
         }
         try? await Task.sleep(nanoseconds: 80_000_000)
-        let stillHidden = hidden.filter { isObstructed($0.pid, $0.window) }
+        let stillHidden = hidden.filter { isObstructed($0.pid, $0.window, windowID: $0.windowID) }
         debugLog("glue raise (không đổi focus): còn bị che \(stillHidden.map(\.item.appName))")
-        guard !stillHidden.isEmpty else { return }
+        guard !stillHidden.isEmpty else { return rebinds }
 
-        // Cách 2 (dự phòng): chuyển focus lần lượt, cuối cùng trả về đúng cửa sổ của app vừa bấm.
+        // Cách 2 (dự phòng): đưa từng cửa sổ lên bằng cách focus đúng cửa sổ đó (không kéo cửa sổ khác của app),
+        // cuối cùng trả focus về đúng cửa sổ vừa được chọn.
         for member in stillHidden {
-            AXUIElementSetAttributeValue(member.app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
-            AXUIElementPerformAction(member.window, kAXRaiseAction as CFString)
+            focusSingle(member)
             try? await Task.sleep(nanoseconds: 60_000_000)
         }
-        for member in members where member.pid == triggerPID {
-            // Trả focus về đúng cửa sổ trong nhóm của app vừa bấm, không kéo các cửa sổ khác của nó lên.
-            AXUIElementSetAttributeValue(member.window, kAXMainAttribute as CFString, kCFBooleanTrue)
-            if let wid = SkyLight.windowID(of: member.window),
-               SkyLight.focusSingleWindow(pid: member.pid, windowID: wid) {
-                debugLog("glue refocus \(member.item.appName) bằng SkyLight (wid=\(wid))")
-            } else {
-                AXUIElementSetAttributeValue(member.app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
-                AXUIElementPerformAction(member.window, kAXRaiseAction as CFString)
-                debugLog("glue refocus \(member.item.appName) bằng AXFrontmost (SkyLight không dùng được)")
-            }
+        if let triggerMember { focusSingle(triggerMember) }
+        return rebinds
+    }
+
+    /// Focus đúng một cửa sổ (SkyLight); không được thì dùng API công khai.
+    private static func focusSingle(_ member: Member) {
+        AXUIElementSetAttributeValue(member.window, kAXMainAttribute as CFString, kCFBooleanTrue)
+        if let wid = member.windowID, SkyLight.focusSingleWindow(pid: member.pid, windowID: wid) {
+            debugLog("focus \(member.item.appName) bằng SkyLight (wid=\(wid))")
+        } else {
+            AXUIElementSetAttributeValue(member.app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+            AXUIElementPerformAction(member.window, kAXRaiseAction as CFString)
+            debugLog("focus \(member.item.appName) bằng AXFrontmost")
         }
     }
 
@@ -217,7 +249,7 @@ enum WindowArranger {
     }
 
     /// Cửa sổ có đang bị một cửa sổ khác (thuộc app khác) nằm trên và đè lên không.
-    private static func isObstructed(_ pid: pid_t, _ window: AXUIElement) -> Bool {
+    private static func isObstructed(_ pid: pid_t, _ window: AXUIElement, windowID: CGWindowID? = nil) -> Bool {
         guard let frame = frameOf(window),
               let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
                 as? [[String: Any]] else { return true }
@@ -228,9 +260,12 @@ enum WindowArranger {
                   let boundsDict = info[kCGWindowBounds as String] as? NSDictionary,
                   let bounds = CGRect(dictionaryRepresentation: boundsDict),
                   bounds.width > 50, bounds.height > 50 else { continue }
+            if let windowID, (info[kCGWindowNumber as String] as? CGWindowID) == windowID { return false }
             if ownerPID == pid {
                 // Gặp chính cửa sổ này trước khi gặp cửa sổ nào che → không bị che.
-                if approximatelyEqual(bounds, frame, tolerance: 4) { return false }
+                if windowID == nil && approximatelyEqual(bounds, frame, tolerance: 4) { return false }
+                // Cửa sổ khác của cùng app nằm đè lên cũng tính là che.
+                if windowID != nil, bounds.intersection(frame).width > 8, bounds.intersection(frame).height > 8 { return true }
                 continue
             }
             if (info[kCGWindowAlpha as String] as? Double ?? 1) < 0.05 { continue }
@@ -246,41 +281,18 @@ enum WindowArranger {
 
     /// Khung hiện tại của cửa sổ thật ứng với một app trong workspace (nil nếu app chưa chạy).
     static func currentFrame(of item: Workspace.Item) -> CGRect? {
-        guard let running = NSRunningApplication.runningApplications(withBundleIdentifier: item.bundleID).first,
-              let window = mainWindow(pid: running.processIdentifier, preferredTitle: item.title) else { return nil }
-        return frameOf(window)
-    }
-
-    /// Cửa sổ chính của app: ưu tiên cửa sổ có tiêu đề khớp, rồi main window, rồi cửa sổ đầu tiên.
-    private static func mainWindow(pid: pid_t, preferredTitle: String) -> AXUIElement? {
-        let app = AXUIElementCreateApplication(pid)
-        var value: CFTypeRef?
-        let windows: [AXUIElement] =
-            AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success
-            ? (value as? [AXUIElement] ?? []) : []
-
-        if !preferredTitle.isEmpty, let match = windows.first(where: {
-            guard let t = stringAttribute($0, kAXTitleAttribute) else { return false }
-            return t == preferredTitle || t.contains(preferredTitle) || preferredTitle.contains(t)
-        }) {
-            return match
-        }
-
-        var main: CFTypeRef?
-        if AXUIElementCopyAttributeValue(app, kAXMainWindowAttribute as CFString, &main) == .success,
-           let main, CFGetTypeID(main) == AXUIElementGetTypeID() {
-            return (main as! AXUIElement)
-        }
-        return windows.first
+        WindowResolver.resolve(item).flatMap { frameOf($0.window) }
     }
 
     // MARK: - Accessibility helpers
 
-    private static func axWindow(pid: pid_t, title: String?, frame: CGRect) -> AXUIElement? {
+    private static func axWindow(pid: pid_t, windowID: CGWindowID, title: String?, frame: CGRect) -> AXUIElement? {
         let app = AXUIElementCreateApplication(pid)
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
               let windows = value as? [AXUIElement] else { return nil }
+        // Đúng mã cửa sổ → chắc chắn đúng cửa sổ đã chọn.
+        if let exact = windows.first(where: { SkyLight.windowID(of: $0) == windowID }) { return exact }
 
         // Tiêu đề AX có thể khác tiêu đề của ScreenCaptureKit (vd. Simulator thêm "– iOS 26.1"),
         // nên ưu tiên khớp tiêu đề, còn lại khớp theo vị trí + kích thước.
@@ -340,13 +352,13 @@ enum WindowArranger {
         if let result = frameOf(ax) { lastPlaced[key] = result }
     }
 
-    private static func stringAttribute(_ el: AXUIElement, _ attr: String) -> String? {
+    static func stringAttribute(_ el: AXUIElement, _ attr: String) -> String? {
         var v: CFTypeRef?
         guard AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success else { return nil }
         return v as? String
     }
 
-    private static func frameOf(_ el: AXUIElement) -> CGRect? {
+    static func frameOf(_ el: AXUIElement) -> CGRect? {
         var pv: CFTypeRef?
         var sv: CFTypeRef?
         guard AXUIElementCopyAttributeValue(el, kAXPositionAttribute as CFString, &pv) == .success,

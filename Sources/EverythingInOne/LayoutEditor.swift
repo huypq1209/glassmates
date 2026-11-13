@@ -222,10 +222,8 @@ struct LayoutEditor: View {
             temp.items[index].placement = p
         }
         temp.layout = .custom
-        let firstPID = temp.items.lazy
-            .compactMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0.bundleID).first }
-            .first?.processIdentifier ?? 0
-        await WindowArranger.glue(temp, triggerPID: firstPID, forceArrange: true)
+        let rebinds = await WindowArranger.glue(temp, trigger: nil, forceArrange: true)
+        workspaces.applyRebinds(rebinds, workspaceID: workspace.id)
     }
 
     private func save() {

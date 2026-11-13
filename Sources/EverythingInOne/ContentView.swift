@@ -309,14 +309,10 @@ struct WorkspaceRow: View {
     @State private var showEditor = false
 
     /// Cửa sổ đang mở thuộc các app chưa có trong workspace (mỗi app 1 dòng).
+    /// Cửa sổ đang mở chưa có trong workspace (cho phép thêm nhiều cửa sổ của cùng một app).
     private var addableWindows: [SCWindow] {
-        let existing = Set(workspace.items.map(\.bundleID))
-        var seen = Set<String>()
-        return store.windows.filter { window in
-            guard let id = window.owningApplication?.bundleIdentifier,
-                  !existing.contains(id) else { return false }
-            return seen.insert(id).inserted
-        }
+        let existing = Set(workspace.items.compactMap(\.windowID))
+        return store.windows.filter { !existing.contains($0.windowID) }
     }
 
     var body: some View {
@@ -337,6 +333,13 @@ struct WorkspaceRow: View {
                     Text("\(index + 1). \(item.appName)")
                         .font(.caption)
                         .lineLimit(1)
+                    if !item.title.isEmpty {
+                        Text(item.title)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                     Spacer()
                     Button {
                         workspaces.removeItem(workspace.id, at: index)

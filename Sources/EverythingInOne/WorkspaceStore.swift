@@ -9,6 +9,8 @@ struct Workspace: Codable, Identifiable, Equatable {
         var title: String
         /// Vị trí tuỳ chỉnh (dùng khi bố cục = Tuỳ chỉnh).
         var placement: Placement? = nil
+        /// Mã cửa sổ (CGWindowID) — nhận diện đúng cửa sổ khi app có nhiều cửa sổ.
+        var windowID: UInt32? = nil
     }
 
     var id = UUID()
@@ -76,14 +78,17 @@ final class WorkspaceStore: ObservableObject {
     func save(name: String, layout: LayoutPreset, windows: [SCWindow]) {
         var items = windows.compactMap { w -> Workspace.Item? in
             guard let app = w.owningApplication else { return nil }
-            return Workspace.Item(bundleID: app.bundleIdentifier, appName: app.applicationName, title: w.title ?? "")
+            return Workspace.Item(bundleID: app.bundleIdentifier, appName: app.applicationName,
+                                  title: w.title ?? "", windowID: w.windowID)
         }
         guard !items.isEmpty else { return }
         if let index = workspaces.firstIndex(where: { $0.name == name }) {
             // Lưu đè: giữ lại vị trí tuỳ chỉnh của các app đã có trong workspace.
             let old = workspaces[index].items
             for i in items.indices {
-                items[i].placement = old.first(where: { $0.bundleID == items[i].bundleID })?.placement
+                let same = old.first(where: { $0.windowID != nil && $0.windowID == items[i].windowID })
+                    ?? old.first(where: { $0.bundleID == items[i].bundleID && $0.windowID == nil })
+                items[i].placement = same?.placement
             }
             let keepsCustom = workspaces[index].layout == .custom && items.contains { $0.placement != nil }
             workspaces[index].layout = keepsCustom ? .custom : layout
@@ -134,14 +139,28 @@ final class WorkspaceStore: ObservableObject {
     func addItem(_ id: UUID, window: SCWindow) {
         guard let i = workspaces.firstIndex(where: { $0.id == id }),
               let app = window.owningApplication,
-              !workspaces[i].items.contains(where: { $0.bundleID == app.bundleIdentifier }) else { return }
-        var item = Workspace.Item(bundleID: app.bundleIdentifier, appName: app.applicationName, title: window.title ?? "")
+              !workspaces[i].items.contains(where: { $0.windowID == window.windowID }) else { return }
+        var item = Workspace.Item(bundleID: app.bundleIdentifier, appName: app.applicationName,
+                                  title: window.title ?? "", windowID: window.windowID)
         if workspaces[i].layout == .custom {
             item.placement = Screens.placement(for: window.frame, in: Screens.all())
         }
         workspaces[i].items.append(item)
         persist()
         status = String(localized: "Đã thêm \(item.appName) vào \(workspaces[i].name).")
+    }
+
+    /// Cập nhật mã cửa sổ (và tiêu đề) khi nhận lại được cửa sổ của một mục, để lần sau khớp chính xác.
+    func rebind(_ id: UUID, itemIndex: Int, windowID: UInt32, title: String?) {
+        guard let i = workspaces.firstIndex(where: { $0.id == id }),
+              workspaces[i].items.indices.contains(itemIndex) else { return }
+        var item = workspaces[i].items[itemIndex]
+        guard item.windowID != windowID else { return }
+        item.windowID = windowID
+        if let title, !title.isEmpty { item.title = title }
+        workspaces[i].items[itemIndex] = item
+        debugLog("rebind \(workspaces[i].name)#\(itemIndex) \(item.appName) → wid=\(windowID)")
+        persist()
     }
 
     func removeItem(_ id: UUID, at index: Int) {
@@ -186,10 +205,8 @@ final class WorkspaceStore: ObservableObject {
         }
 
         if workspace.layout == .custom {
-            let firstPID = workspace.items.lazy
-                .compactMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0.bundleID).first }
-                .first?.processIdentifier ?? 0
-            await WindowArranger.glue(workspace, triggerPID: firstPID, forceArrange: true)
+            let rebinds = await WindowArranger.glue(workspace, trigger: nil, forceArrange: true)
+            applyRebinds(rebinds, workspaceID: workspace.id)
             status = missing.isEmpty
                 ? String(localized: "Đã xếp \(workspace.name).")
                 : String(localized: "Đã xếp \(workspace.name). Không mở được: \(missing.joined(separator: ", ")).")
@@ -203,9 +220,17 @@ final class WorkspaceStore: ObservableObject {
             : String(localized: "Đã xếp \(result.arranged) cửa sổ. Không xếp được: \(notArranged.joined(separator: ", ")).")
     }
 
+    func applyRebinds(_ rebinds: [WindowArranger.Rebind], workspaceID: UUID) {
+        for r in rebinds { rebind(workspaceID, itemIndex: r.itemIndex, windowID: r.windowID, title: r.title) }
+    }
+
+    /// Cửa sổ ứng với một mục: đúng mã cửa sổ; không thì tiêu đề trùng khớp; không thì app chỉ có 1 cửa sổ.
     private func match(_ item: Workspace.Item, in windows: [SCWindow]) -> SCWindow? {
         let candidates = windows.filter { $0.owningApplication?.bundleIdentifier == item.bundleID }
-        return candidates.first(where: { $0.title == item.title }) ?? candidates.first
+        if let id = item.windowID, let hit = candidates.first(where: { $0.windowID == id }) { return hit }
+        let sameTitle = candidates.filter { $0.title == item.title }
+        if sameTitle.count == 1 { return sameTitle[0] }
+        return candidates.count == 1 ? candidates[0] : nil
     }
 
     private func launchIfNeeded(_ item: Workspace.Item) {
