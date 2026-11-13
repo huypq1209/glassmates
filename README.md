@@ -79,7 +79,10 @@ Glassmates starts at login and keeps working with its window closed.
 
 **And also**
 
-- ➕ Add or remove apps from a saved workspace at any time
+- 🎯 Window-precise: each workspace remembers the exact window, not just the app. Have five Chrome windows?
+  Only the one you picked is glued — the others are never touched. Works for any multi-window app
+  (VS Code projects, Terminal, Finder…), and a workspace can hold several windows of the same app
+- ➕ Add or remove windows from a saved workspace at any time
 - 🚀 Opening a workspace launches any app that isn't running yet
 - 🧹 Optional: minimize an app's *other* windows when they cover the group
   (so clicking Chrome in the Dock doesn't throw every Chrome window on top)
